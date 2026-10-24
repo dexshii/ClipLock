@@ -265,7 +265,15 @@ fn mix_loop(
             for s in data {
                 bytes.extend_from_slice(&(s * gain).clamp(-1.0, 1.0).to_le_bytes());
             }
-            stream.write_all(&bytes)?;
+            if let Err(e) = stream.write_all(&bytes) {
+                use std::io::ErrorKind::*;
+                // The encoder closed its end (normal at shutdown); its exit is handled by the pipeline.
+                if matches!(e.kind(), BrokenPipe | ConnectionReset | ConnectionAborted) {
+                    tracing::debug!("audio track {kind:?} closed by encoder");
+                    return Ok(());
+                }
+                return Err(e.into());
+            }
         }
         produced = target;
     }

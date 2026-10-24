@@ -457,15 +457,20 @@ pub async fn export_edit(app: AppHandle, id: String, request: EditRequest) -> Ap
             volume: request.volume,
             lossless: request.lossless,
         };
-        // Edits are for sharing, so always produce H.264 (fastest available encoder).
-        let encoder = st.recorder.capabilities().and_then(|c| {
-            c.encoders
-                .into_iter()
-                .find(|e| e.codec == cliplock_capture::Codec::H264)
-        });
+        // Edits are for sharing, so always produce H.264 (fastest available encoder first).
+        let encoders: Vec<_> = st
+            .recorder
+            .capabilities()
+            .map(|c| {
+                c.encoders
+                    .into_iter()
+                    .filter(|e| e.codec == cliplock_capture::Codec::H264)
+                    .collect()
+            })
+            .unwrap_or_default();
         let clip_id = source.id.clone();
         let mut last_emit = 0.0;
-        let info = cliplock_capture::media::export_edit(&ffmpeg, &spec, encoder.as_ref(), |p| {
+        let info = cliplock_capture::media::export_edit(&ffmpeg, &spec, &encoders, |p| {
             if p - last_emit >= 0.01 || p >= 1.0 {
                 last_emit = p;
                 let _ = app.emit(

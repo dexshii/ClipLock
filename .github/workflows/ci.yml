@@ -25,10 +25,43 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @cliplock/shared build
+      - run: pnpm --filter @cliplock/shared build && pnpm --filter @cliplock/api build
       - run: pnpm -r typecheck
       - run: pnpm -r test
       - run: pnpm --filter @cliplock/desktop exec vite build
+
+  services:
+    name: API + worker integration (PostgreSQL, S3, FFmpeg)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: cliplock_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/cliplock_test
+      TEST_S3_ENDPOINT: http://127.0.0.1:9000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: S3-compatible test server (moto)
+        run: |
+          python3 -m venv /tmp/moto && /tmp/moto/bin/pip install -q "moto[server]"
+          nohup /tmp/moto/bin/moto_server -H 127.0.0.1 -p 9000 > /tmp/moto.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:9000/ >/dev/null && break; sleep 1; done
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cliplock/shared build && pnpm --filter @cliplock/api build
+      - run: pnpm --filter @cliplock/api test
+      - run: pnpm --filter @cliplock/worker test
 
   rust-linux:
     name: Rust (Linux, real FFmpeg)

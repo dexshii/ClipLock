@@ -404,12 +404,14 @@ pub fn edit_args(
     a
 }
 
-/// Exports an edited copy. The original file is never modified. `on_progress` receives
-/// values in 0.0–1.0.
+/// Exports an edited copy. The original file is never modified. `encoders` are the H.264
+/// encoders to try, best first (the next one is used if one fails, e.g. a hardware
+/// encoder rejecting unusual input); they are ignored for lossless exports.
+/// `on_progress` receives values in 0.0–1.0.
 pub fn export_edit(
     ffmpeg: &Ffmpeg,
     spec: &EditSpec,
-    encoder: Option<&EncoderInfo>,
+    encoders: &[EncoderInfo],
     mut on_progress: impl FnMut(f64),
 ) -> Result<MediaInfo> {
     spec.validate()?;
@@ -417,6 +419,38 @@ pub fn export_edit(
     if let Some(parent) = spec.output.parent() {
         std::fs::create_dir_all(parent)?;
     }
+    if spec.lossless {
+        return export_attempt(ffmpeg, spec, None, &info, &mut on_progress);
+    }
+    if encoders.is_empty() {
+        return Err(CaptureError::NoEncoder);
+    }
+    let mut last = CaptureError::NoEncoder;
+    for (i, encoder) in encoders.iter().enumerate() {
+        match export_attempt(ffmpeg, spec, Some(encoder), &info, &mut on_progress) {
+            Ok(out) => return Ok(out),
+            Err(e) => {
+                if i + 1 < encoders.len() {
+                    tracing::warn!(
+                        "export with {} failed ({e}); trying {}",
+                        encoder.ffmpeg_name,
+                        encoders[i + 1].ffmpeg_name
+                    );
+                }
+                last = e;
+            }
+        }
+    }
+    Err(last)
+}
+
+fn export_attempt(
+    ffmpeg: &Ffmpeg,
+    spec: &EditSpec,
+    encoder: Option<&EncoderInfo>,
+    info: &MediaInfo,
+    on_progress: &mut impl FnMut(f64),
+) -> Result<MediaInfo> {
     let tmp = part_path(&spec.output);
     let args = edit_args(spec, encoder, info.audio_tracks > 0, &tmp);
     let output_duration =
@@ -448,11 +482,6 @@ pub fn export_edit(
     let stderr = err_thread.join().unwrap_or_default();
     if !status.success() {
         let _ = std::fs::remove_file(&tmp);
-        // A hardware encoder can fail on unusual input; retry once in software.
-        if encoder.is_some_and(|e| e.hardware) {
-            tracing::warn!("hardware export failed, retrying with software encoder");
-            return export_edit(ffmpeg, spec, None, on_progress);
-        }
         return Err(ffmpeg_failed("export failed", &stderr));
     }
     std::fs::rename(&tmp, &spec.output)?;

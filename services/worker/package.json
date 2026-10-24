@@ -1,0 +1,29 @@
+{
+  "name": "@cliplock/worker",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/worker.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch --env-file-if-exists=../../.env src/worker.ts",
+    "start": "node dist/worker.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@cliplock/api": "workspace:*",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-s3": "^3.1156.0",
+    "@cliplock/shared": "workspace:*",
+    "@types/node": "^22.18.0",
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.1",
+    "tsx": "^4.20.6",
+    "typescript": "5.9.3",
+    "vitest": "^3.2.7"
+  }
+}

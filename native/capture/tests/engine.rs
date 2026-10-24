@@ -254,6 +254,14 @@ fn replay_recording_pause_and_recovery() {
 #[test]
 fn edit_export_trims_and_changes_speed() {
     let Some(ff) = ffmpeg() else { return };
+    // Use whatever H.264 encoder this build has (LGPL Windows builds lack libx264).
+    let encoders: Vec<_> = ff
+        .probe_capabilities()
+        .unwrap()
+        .encoders
+        .into_iter()
+        .filter(|e| e.codec == Codec::H264)
+        .collect();
     let tmp = tempfile::tempdir().unwrap();
     let src = tmp.path().join("src.mp4");
     let status = Command::new(&ff.ffmpeg)
@@ -271,8 +279,10 @@ fn edit_export_trims_and_changes_speed() {
             "lavfi",
             "-i",
             "sine=f=440:d=6",
+            "-pix_fmt",
+            "yuv420p",
             "-c:v",
-            "libx264",
+            &encoders[0].ffmpeg_name,
             "-c:a",
             "aac",
             "-shortest",
@@ -294,7 +304,7 @@ fn edit_export_trims_and_changes_speed() {
         volume: 0.5,
         lossless: false,
     };
-    let info = cliplock_capture::media::export_edit(&ff, &spec, None, |p| last = p).unwrap();
+    let info = cliplock_capture::media::export_edit(&ff, &spec, &encoders, |p| last = p).unwrap();
     assert!(
         (info.duration_secs - 2.0).abs() < 0.25,
         "edited duration {}",
@@ -311,7 +321,7 @@ fn edit_export_trims_and_changes_speed() {
         lossless: true,
         ..spec
     };
-    let info = cliplock_capture::media::export_edit(&ff, &spec, None, |_| {}).unwrap();
+    let info = cliplock_capture::media::export_edit(&ff, &spec, &[], |_| {}).unwrap();
     assert!(
         info.duration_secs >= 3.5 && info.duration_secs <= 5.2,
         "lossless duration {}",
