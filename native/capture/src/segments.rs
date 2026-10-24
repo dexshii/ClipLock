@@ -36,7 +36,10 @@ pub fn segment_pattern(dir: &Path) -> PathBuf {
 }
 
 pub fn segment_index_from_name(name: &str) -> Option<u64> {
-    name.strip_prefix(SEGMENT_PREFIX)?.strip_suffix(&format!(".{SEGMENT_EXT}"))?.parse().ok()
+    name.strip_prefix(SEGMENT_PREFIX)?
+        .strip_suffix(&format!(".{SEGMENT_EXT}"))?
+        .parse()
+        .ok()
 }
 
 pub fn parse_list_line(dir: &Path, line: &str) -> Option<Segment> {
@@ -49,7 +52,12 @@ pub fn parse_list_line(dir: &Path, line: &str) -> Option<Segment> {
     if !(start.is_finite() && end.is_finite()) || end < start {
         return None;
     }
-    Some(Segment { index, path: dir.join(name), start, end })
+    Some(Segment {
+        index,
+        path: dir.join(name),
+        start,
+        end,
+    })
 }
 
 /// Incrementally reads a live segment list.
@@ -63,7 +71,12 @@ pub struct SegmentLog {
 
 impl SegmentLog {
     pub fn new(dir: impl Into<PathBuf>) -> Self {
-        Self { dir: dir.into(), offset: 0, partial: String::new(), segments: VecDeque::new() }
+        Self {
+            dir: dir.into(),
+            offset: 0,
+            partial: String::new(),
+            segments: VecDeque::new(),
+        }
     }
 
     pub fn dir(&self) -> &Path {
@@ -98,7 +111,11 @@ impl SegmentLog {
         while let Some(nl) = self.partial.find('\n') {
             let line: String = self.partial.drain(..=nl).collect();
             if let Some(seg) = parse_list_line(&self.dir, &line) {
-                if self.segments.back().is_none_or(|last| seg.index > last.index) {
+                if self
+                    .segments
+                    .back()
+                    .is_none_or(|last| seg.index > last.index)
+                {
                     self.segments.push_back(seg);
                     added += 1;
                 }
@@ -169,7 +186,10 @@ pub fn select_recording(
         .filter(|s| {
             let overlap = |a: f64, b: f64| (s.end.min(b) - s.start.max(a)).max(0.0);
             let recorded = overlap(start, stop)
-                - pauses.iter().map(|(ps, pe)| overlap(ps.max(start), pe.unwrap_or(f64::INFINITY).min(stop))).sum::<f64>();
+                - pauses
+                    .iter()
+                    .map(|(ps, pe)| overlap(ps.max(start), pe.unwrap_or(f64::INFINITY).min(stop)))
+                    .sum::<f64>();
             s.duration() > 0.0 && recorded >= s.duration() / 2.0 - 1e-6
         })
         .collect()
@@ -192,7 +212,12 @@ mod tests {
     use std::io::Write;
 
     fn seg(i: u64, start: f64, end: f64) -> Segment {
-        Segment { index: i, path: PathBuf::from(format!("seg_{i:06}.ts")), start, end }
+        Segment {
+            index: i,
+            path: PathBuf::from(format!("seg_{i:06}.ts")),
+            start,
+            end,
+        }
     }
 
     #[test]
@@ -235,7 +260,10 @@ mod tests {
             log.segments.push_back(seg(i, i as f64, i as f64 + 1.0));
         }
         let removed = log.prune(4.0, None);
-        assert_eq!(removed.iter().map(|s| s.index).collect::<Vec<_>>(), vec![0, 1, 2, 3]);
+        assert_eq!(
+            removed.iter().map(|s| s.index).collect::<Vec<_>>(),
+            vec![0, 1, 2, 3]
+        );
         let removed = log.prune(8.0, Some(5));
         assert_eq!(removed.iter().map(|s| s.index).collect::<Vec<_>>(), vec![4]);
         let removed = log.prune(100.0, None);
@@ -245,9 +273,14 @@ mod tests {
 
     #[test]
     fn replay_selection_covers_window() {
-        let segs: VecDeque<_> = (0..10).map(|i| seg(i, i as f64 * 2.0, i as f64 * 2.0 + 2.0)).collect();
+        let segs: VecDeque<_> = (0..10)
+            .map(|i| seg(i, i as f64 * 2.0, i as f64 * 2.0 + 2.0))
+            .collect();
         let picked = select_replay(&segs, 15.0, 5.0);
-        assert_eq!(picked.iter().map(|s| s.index).collect::<Vec<_>>(), vec![5, 6, 7]);
+        assert_eq!(
+            picked.iter().map(|s| s.index).collect::<Vec<_>>(),
+            vec![5, 6, 7]
+        );
         let picked = select_replay(&segs, 20.0, 1000.0);
         assert_eq!(picked.len(), 10);
     }
@@ -266,6 +299,9 @@ mod tests {
         let picked = select_recording(segs.clone(), 2.5, None, &[(7.0, None)]);
         assert_eq!(ids(picked), vec![2, 3, 4, 5, 6]);
         let picked = select_recording(segs, 2.0, Some(5.7), &[]);
-        assert_eq!(trimmed_duration(&picked, Some(5.7)).map(|d| (d * 10.0).round() / 10.0), Some(3.7));
+        assert_eq!(
+            trimmed_duration(&picked, Some(5.7)).map(|d| (d * 10.0).round() / 10.0),
+            Some(3.7)
+        );
     }
 }

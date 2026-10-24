@@ -31,12 +31,17 @@ fn flag(args: &[String], name: &str) -> bool {
 }
 
 fn opt<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
-    args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).map(String::as_str)
+    args.iter()
+        .position(|a| a == name)
+        .and_then(|i| args.get(i + 1))
+        .map(String::as_str)
 }
 
 fn parse<T: std::str::FromStr>(args: &[String], name: &str, default: T) -> Result<T, String> {
     match opt(args, name) {
-        Some(v) => v.parse().map_err(|_| format!("invalid value for {name}: {v}")),
+        Some(v) => v
+            .parse()
+            .map_err(|_| format!("invalid value for {name}: {v}")),
         None => Ok(default),
     }
 }
@@ -45,8 +50,12 @@ fn config_from(args: &[String]) -> Result<CaptureConfig, String> {
     let mut c = CaptureConfig::default();
     c.video.source = match opt(args, "--source").unwrap_or("monitor:0") {
         "test" => VideoSource::TestPattern,
-        s if s.starts_with("monitor:") => VideoSource::Monitor { index: s[8..].parse().map_err(|_| "bad monitor index")? },
-        s if s.starts_with("window:") => VideoSource::Window { hwnd: s[7..].parse().map_err(|_| "bad hwnd")? },
+        s if s.starts_with("monitor:") => VideoSource::Monitor {
+            index: s[8..].parse().map_err(|_| "bad monitor index")?,
+        },
+        s if s.starts_with("window:") => VideoSource::Window {
+            hwnd: s[7..].parse().map_err(|_| "bad hwnd")?,
+        },
         s => return Err(format!("unknown source {s}")),
     };
     c.video.output_height = match opt(args, "--height") {
@@ -81,11 +90,16 @@ fn config_from(args: &[String]) -> Result<CaptureConfig, String> {
 }
 
 fn engine(args: &[String]) -> Result<CaptureEngine, String> {
-    let exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(|p| p.to_path_buf()));
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()));
     let ff = Ffmpeg::locate(&exe_dir.into_iter().collect::<Vec<_>>()).map_err(|e| e.to_string())?;
     let caps = ff.probe_capabilities().map_err(|e| e.to_string())?;
-    let work = opt(args, "--work").map(PathBuf::from).unwrap_or_else(|| std::env::temp_dir().join("cliplock-capture-cli"));
-    let engine = CaptureEngine::new(ff, caps, work, config_from(args)?).map_err(|e| e.to_string())?;
+    let work = opt(args, "--work")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| std::env::temp_dir().join("cliplock-capture-cli"));
+    let engine =
+        CaptureEngine::new(ff, caps, work, config_from(args)?).map_err(|e| e.to_string())?;
     engine.set_event_handler(std::sync::Arc::new(|e| {
         eprintln!("event: {}", serde_json::to_string(&e).unwrap_or_default());
     }));
@@ -93,11 +107,18 @@ fn engine(args: &[String]) -> Result<CaptureEngine, String> {
 }
 
 fn print_json<T: serde::Serialize>(value: &T) {
-    println!("{}", serde_json::to_string_pretty(value).unwrap_or_default());
+    println!(
+        "{}",
+        serde_json::to_string_pretty(value).unwrap_or_default()
+    );
 }
 
 fn run(args: &[String]) -> Result<(), String> {
-    let out = || opt(args, "--out").map(PathBuf::from).ok_or("--out is required");
+    let out = || {
+        opt(args, "--out")
+            .map(PathBuf::from)
+            .ok_or("--out is required")
+    };
     match args.first().map(String::as_str) {
         Some("probe") => {
             let ff = Ffmpeg::locate(&[]).map_err(|e| e.to_string())?;
@@ -108,9 +129,15 @@ fn run(args: &[String]) -> Result<(), String> {
             let engine = engine(args)?;
             let seconds: u32 = parse(args, "--seconds", 30)?;
             engine.start_replay(seconds).map_err(|e| e.to_string())?;
-            std::thread::sleep(Duration::from_secs(parse(args, "--wait", seconds as u64 + 5)?));
+            std::thread::sleep(Duration::from_secs(parse(
+                args,
+                "--wait",
+                seconds as u64 + 5,
+            )?));
             let started = Instant::now();
-            let clip = engine.save_replay(&out()?, None).map_err(|e| e.to_string())?;
+            let clip = engine
+                .save_replay(&out()?, None)
+                .map_err(|e| e.to_string())?;
             eprintln!("saved in {:?}", started.elapsed());
             print_json(&clip);
         }

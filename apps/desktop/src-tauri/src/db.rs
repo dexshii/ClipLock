@@ -54,7 +54,9 @@ const MIGRATIONS: &[&str] = &[
 
 pub fn open(path: &Path) -> AppResult<Connection> {
     let conn = Connection::open(path)?;
-    conn.execute_batch("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;")?;
+    conn.execute_batch(
+        "PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;",
+    )?;
     migrate(&conn)?;
     Ok(conn)
 }
@@ -146,12 +148,16 @@ impl Clip {
             title: r.get("title")?,
             file_exists: Path::new(&file_path).exists(),
             file_path: file_path.into(),
-            thumbnail_path: r.get::<_, Option<String>>("thumbnail_path")?.map(Into::into),
+            thumbnail_path: r
+                .get::<_, Option<String>>("thumbnail_path")?
+                .map(Into::into),
             game_id: r.get("game_id")?,
             game_name: r.get("game_name")?,
             kind: ClipKind::parse(&r.get::<_, String>("kind")?),
             source_clip_id: r.get("source_clip_id")?,
-            created_at: DateTime::parse_from_rfc3339(&created_at).map(|d| d.with_timezone(&Utc)).unwrap_or_default(),
+            created_at: DateTime::parse_from_rfc3339(&created_at)
+                .map(|d| d.with_timezone(&Utc))
+                .unwrap_or_default(),
             duration_ms: r.get("duration_ms")?,
             width: r.get("width")?,
             height: r.get("height")?,
@@ -246,10 +252,20 @@ pub fn list_clips(conn: &Connection, q: &ClipQuery) -> AppResult<Vec<Clip>> {
         ClipSort::Largest => "size_bytes DESC",
         ClipSort::Title => "title COLLATE NOCASE ASC",
     };
-    let search = q.search.as_deref().map(str::trim).filter(|s| !s.is_empty()).map(|s| {
-        // Escape LIKE wildcards so user input is matched literally.
-        format!("%{}%", s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_"))
-    });
+    let search = q
+        .search
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| {
+            // Escape LIKE wildcards so user input is matched literally.
+            format!(
+                "%{}%",
+                s.replace('\\', "\\\\")
+                    .replace('%', "\\%")
+                    .replace('_', "\\_")
+            )
+        });
     let sql = format!(
         "SELECT * FROM clips
          WHERE (?1 IS NULL OR title LIKE ?1 ESCAPE '\\' OR game_name LIKE ?1 ESCAPE '\\')
@@ -258,7 +274,10 @@ pub fn list_clips(conn: &Connection, q: &ClipQuery) -> AppResult<Vec<Clip>> {
          ORDER BY {order}"
     );
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map(params![search, q.game, q.favorites_only as i64], Clip::from_row)?;
+    let rows = stmt.query_map(
+        params![search, q.game, q.favorites_only as i64],
+        Clip::from_row,
+    )?;
     Ok(rows.collect::<Result<_, _>>()?)
 }
 
@@ -285,10 +304,16 @@ pub fn update_clip(conn: &Connection, id: &str, patch: &ClipPatch) -> AppResult<
         if title.is_empty() || title.chars().count() > 100 {
             return Err(AppError::Invalid("title must be 1–100 characters".into()));
         }
-        conn.execute("UPDATE clips SET title = ?2 WHERE id = ?1", params![id, title])?;
+        conn.execute(
+            "UPDATE clips SET title = ?2 WHERE id = ?1",
+            params![id, title],
+        )?;
     }
     if let Some(fav) = patch.favorite {
-        conn.execute("UPDATE clips SET favorite = ?2 WHERE id = ?1", params![id, fav as i64])?;
+        conn.execute(
+            "UPDATE clips SET favorite = ?2 WHERE id = ?1",
+            params![id, fav as i64],
+        )?;
     }
     if let Some(game) = &patch.game_name {
         let game = game.trim();
@@ -300,7 +325,12 @@ pub fn update_clip(conn: &Connection, id: &str, patch: &ClipPatch) -> AppResult<
     get_clip(conn, id)
 }
 
-pub fn update_media(conn: &Connection, id: &str, thumbnail: Option<&Path>, size_bytes: i64) -> AppResult<()> {
+pub fn update_media(
+    conn: &Connection,
+    id: &str,
+    thumbnail: Option<&Path>,
+    size_bytes: i64,
+) -> AppResult<()> {
     conn.execute(
         "UPDATE clips SET thumbnail_path = COALESCE(?2, thumbnail_path), size_bytes = ?3 WHERE id = ?1",
         params![id, thumbnail.map(|p| p.to_string_lossy().into_owned()), size_bytes],
@@ -328,7 +358,12 @@ pub fn stats(conn: &Connection) -> AppResult<LibraryStats> {
                 COALESCE(SUM(status = 'READY'), 0) FROM clips",
         [],
         |r| {
-            Ok(LibraryStats { clip_count: r.get(0)?, total_bytes: r.get(1)?, total_duration_ms: r.get(2)?, uploaded_count: r.get(3)? })
+            Ok(LibraryStats {
+                clip_count: r.get(0)?,
+                total_bytes: r.get(1)?,
+                total_duration_ms: r.get(2)?,
+                uploaded_count: r.get(3)?,
+            })
         },
     )?)
 }
@@ -337,6 +372,7 @@ pub fn stats(conn: &Connection) -> AppResult<LibraryStats> {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
+#[allow(dead_code)] // wired up by the upload queue
 pub struct CloudUpdate {
     pub status: Option<String>,
     pub progress: Option<Option<f64>>,
@@ -348,28 +384,47 @@ pub struct CloudUpdate {
     pub sha256: Option<String>,
 }
 
+#[allow(dead_code)] // wired up by the upload queue
 pub fn update_cloud(conn: &Connection, id: &str, u: &CloudUpdate) -> AppResult<Clip> {
     let tx = conn.unchecked_transaction()?;
     if let Some(s) = &u.status {
         tx.execute("UPDATE clips SET status = ?2 WHERE id = ?1", params![id, s])?;
     }
     if let Some(p) = &u.progress {
-        tx.execute("UPDATE clips SET upload_progress = ?2 WHERE id = ?1", params![id, p])?;
+        tx.execute(
+            "UPDATE clips SET upload_progress = ?2 WHERE id = ?1",
+            params![id, p],
+        )?;
     }
     if let Some(e) = &u.error {
-        tx.execute("UPDATE clips SET upload_error = ?2 WHERE id = ?1", params![id, e])?;
+        tx.execute(
+            "UPDATE clips SET upload_error = ?2 WHERE id = ?1",
+            params![id, e],
+        )?;
     }
     if let Some(c) = &u.cloud_id {
-        tx.execute("UPDATE clips SET cloud_id = ?2 WHERE id = ?1", params![id, c])?;
+        tx.execute(
+            "UPDATE clips SET cloud_id = ?2 WHERE id = ?1",
+            params![id, c],
+        )?;
     }
     if let Some(s) = &u.share_url {
-        tx.execute("UPDATE clips SET share_url = ?2 WHERE id = ?1", params![id, s])?;
+        tx.execute(
+            "UPDATE clips SET share_url = ?2 WHERE id = ?1",
+            params![id, s],
+        )?;
     }
     if let Some(m) = &u.media_url {
-        tx.execute("UPDATE clips SET media_url = ?2 WHERE id = ?1", params![id, m])?;
+        tx.execute(
+            "UPDATE clips SET media_url = ?2 WHERE id = ?1",
+            params![id, m],
+        )?;
     }
     if let Some(v) = &u.visibility {
-        tx.execute("UPDATE clips SET visibility = ?2 WHERE id = ?1", params![id, v])?;
+        tx.execute(
+            "UPDATE clips SET visibility = ?2 WHERE id = ?1",
+            params![id, v],
+        )?;
     }
     if let Some(h) = &u.sha256 {
         tx.execute("UPDATE clips SET sha256 = ?2 WHERE id = ?1", params![id, h])?;
@@ -380,6 +435,7 @@ pub fn update_cloud(conn: &Connection, id: &str, u: &CloudUpdate) -> AppResult<C
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)] // wired up by the upload queue
 pub struct UploadSession {
     pub clip_id: String,
     pub cloud_id: String,
@@ -390,6 +446,7 @@ pub struct UploadSession {
     pub parts: Vec<(i64, String)>,
 }
 
+#[allow(dead_code)] // wired up by the upload queue
 pub fn save_upload_session(conn: &Connection, s: &UploadSession) -> AppResult<()> {
     conn.execute(
         "INSERT INTO upload_sessions (clip_id, cloud_id, server_url, part_size, part_count, parts_json, updated_at)
@@ -401,6 +458,7 @@ pub fn save_upload_session(conn: &Connection, s: &UploadSession) -> AppResult<()
     Ok(())
 }
 
+#[allow(dead_code)] // wired up by the upload queue
 pub fn get_upload_session(conn: &Connection, clip_id: &str) -> AppResult<Option<UploadSession>> {
     conn.query_row(
         "SELECT clip_id, cloud_id, server_url, part_size, part_count, parts_json FROM upload_sessions WHERE clip_id = ?1",
@@ -421,14 +479,18 @@ pub fn get_upload_session(conn: &Connection, clip_id: &str) -> AppResult<Option<
     .map_err(Into::into)
 }
 
+#[allow(dead_code)] // wired up by the upload queue
 pub fn delete_upload_session(conn: &Connection, clip_id: &str) -> AppResult<()> {
     conn.execute("DELETE FROM upload_sessions WHERE clip_id = ?1", [clip_id])?;
     Ok(())
 }
 
 /// Clips whose upload was interrupted (app closed while queued/uploading).
+#[allow(dead_code)] // wired up by the upload queue
 pub fn interrupted_uploads(conn: &Connection) -> AppResult<Vec<String>> {
-    let mut stmt = conn.prepare("SELECT id FROM clips WHERE status IN ('QUEUED', 'UPLOADING') ORDER BY created_at")?;
+    let mut stmt = conn.prepare(
+        "SELECT id FROM clips WHERE status IN ('QUEUED', 'UPLOADING') ORDER BY created_at",
+    )?;
     let rows = stmt.query_map([], |r| r.get(0))?;
     Ok(rows.collect::<Result<_, _>>()?)
 }
@@ -457,31 +519,94 @@ mod tests {
     #[test]
     fn crud_filters_and_sorting() {
         let conn = open_in_memory().unwrap();
-        let a = insert_clip(&conn, &new_clip("Ace on Ascent", Some("VALORANT"), "/c/a.mp4", 30_000)).unwrap();
-        insert_clip(&conn, &new_clip("100% clutch_win", Some("Counter-Strike 2"), "/c/b.mp4", 60_000)).unwrap();
+        let a = insert_clip(
+            &conn,
+            &new_clip("Ace on Ascent", Some("VALORANT"), "/c/a.mp4", 30_000),
+        )
+        .unwrap();
+        insert_clip(
+            &conn,
+            &new_clip(
+                "100% clutch_win",
+                Some("Counter-Strike 2"),
+                "/c/b.mp4",
+                60_000,
+            ),
+        )
+        .unwrap();
         insert_clip(&conn, &new_clip("Desktop", None, "/c/c.mp4", 10_000)).unwrap();
-        assert!(insert_clip(&conn, &new_clip("dup", None, "/c/a.mp4", 1)).is_err(), "file paths are unique");
+        assert!(
+            insert_clip(&conn, &new_clip("dup", None, "/c/a.mp4", 1)).is_err(),
+            "file paths are unique"
+        );
 
         let all = list_clips(&conn, &ClipQuery::default()).unwrap();
         assert_eq!(all.len(), 3);
-        let longest = list_clips(&conn, &ClipQuery { sort: ClipSort::Longest, ..Default::default() }).unwrap();
+        let longest = list_clips(
+            &conn,
+            &ClipQuery {
+                sort: ClipSort::Longest,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert_eq!(longest[0].title, "100% clutch_win");
 
-        let q = |s: &str| list_clips(&conn, &ClipQuery { search: Some(s.into()), ..Default::default() }).unwrap();
+        let q = |s: &str| {
+            list_clips(
+                &conn,
+                &ClipQuery {
+                    search: Some(s.into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+        };
         assert_eq!(q("ascent").len(), 1);
         assert_eq!(q("valorant").len(), 1, "search matches game names");
         assert_eq!(q("100%").len(), 1, "% is matched literally");
         assert_eq!(q("%").len(), 1);
         assert_eq!(q("_").len(), 1);
 
-        update_clip(&conn, &a.id, &ClipPatch { favorite: Some(true), title: Some("  Renamed ".into()), ..Default::default() }).unwrap();
-        let favs = list_clips(&conn, &ClipQuery { favorites_only: true, ..Default::default() }).unwrap();
+        update_clip(
+            &conn,
+            &a.id,
+            &ClipPatch {
+                favorite: Some(true),
+                title: Some("  Renamed ".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let favs = list_clips(
+            &conn,
+            &ClipQuery {
+                favorites_only: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert_eq!(favs.len(), 1);
         assert_eq!(favs[0].title, "Renamed");
-        assert!(update_clip(&conn, &a.id, &ClipPatch { title: Some("   ".into()), ..Default::default() }).is_err());
+        assert!(update_clip(
+            &conn,
+            &a.id,
+            &ClipPatch {
+                title: Some("   ".into()),
+                ..Default::default()
+            }
+        )
+        .is_err());
 
         assert_eq!(game_names(&conn).unwrap().len(), 2);
-        let by_game = list_clips(&conn, &ClipQuery { game: Some("VALORANT".into()), ..Default::default() }).unwrap();
+        let by_game = list_clips(
+            &conn,
+            &ClipQuery {
+                game: Some("VALORANT".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert_eq!(by_game.len(), 1);
 
         let stats = stats(&conn).unwrap();
@@ -510,14 +635,26 @@ mod tests {
         let updated = update_cloud(
             &conn,
             &c.id,
-            &CloudUpdate { status: Some("UPLOADING".into()), progress: Some(Some(0.5)), ..Default::default() },
+            &CloudUpdate {
+                status: Some("UPLOADING".into()),
+                progress: Some(Some(0.5)),
+                ..Default::default()
+            },
         )
         .unwrap();
         assert_eq!(updated.status, "UPLOADING");
         assert_eq!(interrupted_uploads(&conn).unwrap(), vec![c.id.clone()]);
-        assert!(conn.execute("UPDATE clips SET status = 'BOGUS'", []).is_err(), "status is constrained");
+        assert!(
+            conn.execute("UPDATE clips SET status = 'BOGUS'", [])
+                .is_err(),
+            "status is constrained"
+        );
         delete_clip(&conn, &c.id).unwrap();
-        assert_eq!(get_upload_session(&conn, &c.id).unwrap(), None, "cascade delete");
+        assert_eq!(
+            get_upload_session(&conn, &c.id).unwrap(),
+            None,
+            "cascade delete"
+        );
     }
 
     #[test]
@@ -526,7 +663,9 @@ mod tests {
         let path = dir.path().join("db.sqlite");
         drop(open(&path).unwrap());
         let conn = open(&path).unwrap();
-        let v: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        let v: i64 = conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(v, MIGRATIONS.len() as i64);
     }
 }

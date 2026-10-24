@@ -17,7 +17,9 @@ pub mod pipeline;
 pub mod platform;
 pub mod segments;
 
-pub use config::{AudioConfig, AudioInputConfig, CaptureConfig, Codec, EncoderKind, VideoConfig, VideoSource};
+pub use config::{
+    AudioConfig, AudioInputConfig, CaptureConfig, Codec, EncoderKind, VideoConfig, VideoSource,
+};
 pub use engine::{CaptureEngine, EngineEvent, EngineStatus, SavedClip};
 pub use error::{CaptureError, Result};
 pub use ffmpeg::{Capabilities, EncoderInfo, Ffmpeg};

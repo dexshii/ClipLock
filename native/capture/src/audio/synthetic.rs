@@ -45,7 +45,11 @@ impl SineInput {
                 })
                 .expect("spawn sine thread")
         };
-        Self { queue, stop, thread: Some(thread) }
+        Self {
+            queue,
+            stop,
+            thread: Some(thread),
+        }
     }
 }
 

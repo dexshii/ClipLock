@@ -20,7 +20,10 @@ pub fn plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
             if event.state() != ShortcutState::Pressed {
                 return;
             }
-            let Some(action) = app.try_state::<HotkeyMap>().and_then(|m| m.0.read().get(&shortcut.id()).copied()) else {
+            let Some(action) = app
+                .try_state::<HotkeyMap>()
+                .and_then(|m| m.0.read().get(&shortcut.id()).copied())
+            else {
                 return;
             };
             let app = app.clone();
@@ -42,7 +45,8 @@ pub fn plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
 }
 
 pub fn parse(accelerator: &str) -> AppResult<Shortcut> {
-    Shortcut::from_str(accelerator).map_err(|e| AppError::Invalid(format!("invalid hotkey “{accelerator}”: {e}")))
+    Shortcut::from_str(accelerator)
+        .map_err(|e| AppError::Invalid(format!("invalid hotkey “{accelerator}”: {e}")))
 }
 
 /// Registers all configured hotkeys, replacing previous registrations. Returns the
@@ -55,7 +59,11 @@ pub fn apply(app: &AppHandle, settings: &HotkeySettings) -> Vec<String> {
     map.clear();
     let mut failed = Vec::new();
     for (action, accel) in settings.entries() {
-        match parse(accel).and_then(|s| gs.register(s).map(|_| s).map_err(|e| AppError::Invalid(e.to_string()))) {
+        match parse(accel).and_then(|s| {
+            gs.register(s)
+                .map(|_| s)
+                .map_err(|e| AppError::Invalid(e.to_string()))
+        }) {
             Ok(shortcut) => {
                 map.insert(shortcut.id(), action);
             }

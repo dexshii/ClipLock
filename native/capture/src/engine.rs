@@ -31,14 +31,21 @@ const MAX_RESTARTS: u32 = 3;
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum EngineEvent {
     #[serde(rename_all = "camelCase")]
-    PipelineStarted { encoder: EncoderInfo, gpu_path: bool, fallback: bool },
+    PipelineStarted {
+        encoder: EncoderInfo,
+        gpu_path: bool,
+        fallback: bool,
+    },
     #[serde(rename_all = "camelCase")]
     PipelineStopped,
     #[serde(rename_all = "camelCase")]
     PipelineFailed { error: String, will_retry: bool },
     /// The encoder died during a manual recording; what was captured so far was saved.
     #[serde(rename_all = "camelCase")]
-    RecordingInterrupted { clip: Option<SavedClip>, error: String },
+    RecordingInterrupted {
+        clip: Option<SavedClip>,
+        error: String,
+    },
     #[serde(rename_all = "camelCase")]
     AudioWarning { message: String },
 }
@@ -117,7 +124,10 @@ impl Recording {
     }
 
     fn is_paused(&self) -> bool {
-        self.manifest.pauses.last().is_some_and(|(_, end)| end.is_none())
+        self.manifest
+            .pauses
+            .last()
+            .is_some_and(|(_, end)| end.is_none())
     }
 }
 
@@ -146,7 +156,10 @@ pub struct CaptureEngine {
 }
 
 fn unix_ms() -> u128 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0)
 }
 
 fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<()> {
@@ -159,12 +172,18 @@ fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<()> {
 impl CaptureEngine {
     /// Creates the engine. `work_dir` holds the replay buffer and recording manifests;
     /// it should be on a local disk with a few GB free.
-    pub fn new(ffmpeg: Ffmpeg, caps: Capabilities, work_dir: impl Into<PathBuf>, config: CaptureConfig) -> Result<Self> {
+    pub fn new(
+        ffmpeg: Ffmpeg,
+        caps: Capabilities,
+        work_dir: impl Into<PathBuf>,
+        config: CaptureConfig,
+    ) -> Result<Self> {
         config.validate()?;
         let work_dir = work_dir.into();
         std::fs::create_dir_all(work_dir.join("sessions"))?;
         std::fs::create_dir_all(work_dir.join("recordings"))?;
-        let controls = AudioControls::new(config.audio.system.volume, config.audio.microphone.volume);
+        let controls =
+            AudioControls::new(config.audio.system.volume, config.audio.microphone.volume);
         let inner = Arc::new(Mutex::new(Inner {
             ffmpeg,
             caps,
@@ -185,21 +204,27 @@ impl CaptureEngine {
         let maintenance = {
             let inner = Arc::downgrade(&inner);
             let shutdown = shutdown.clone();
-            std::thread::Builder::new().name("cliplock-engine".into()).spawn(move || {
-                while !shutdown.load(Ordering::Relaxed) {
-                    std::thread::sleep(MAINTENANCE_INTERVAL);
-                    let Some(inner) = inner.upgrade() else { break };
-                    let events = maintain(&mut inner.lock());
-                    let handler = inner.lock().events.clone();
-                    if let Some(handler) = handler {
-                        for e in events {
-                            handler(e);
+            std::thread::Builder::new()
+                .name("cliplock-engine".into())
+                .spawn(move || {
+                    while !shutdown.load(Ordering::Relaxed) {
+                        std::thread::sleep(MAINTENANCE_INTERVAL);
+                        let Some(inner) = inner.upgrade() else { break };
+                        let events = maintain(&mut inner.lock());
+                        let handler = inner.lock().events.clone();
+                        if let Some(handler) = handler {
+                            for e in events {
+                                handler(e);
+                            }
                         }
                     }
-                }
-            })?
+                })?
         };
-        Ok(Self { inner, shutdown, maintenance: Mutex::new(Some(maintenance)) })
+        Ok(Self {
+            inner,
+            shutdown,
+            maintenance: Mutex::new(Some(maintenance)),
+        })
     }
 
     pub fn set_event_handler(&self, handler: EventHandler) {
@@ -225,7 +250,9 @@ impl CaptureEngine {
         let events = {
             let mut inner = self.inner.lock();
             inner.controls.set_system_volume(config.audio.system.volume);
-            inner.controls.set_mic_volume(config.audio.microphone.volume);
+            inner
+                .controls
+                .set_mic_volume(config.audio.microphone.volume);
             let mut a = inner.config.clone();
             let mut b = config.clone();
             for c in [&mut a, &mut b] {
@@ -277,14 +304,20 @@ impl CaptureEngine {
         let entries: Vec<PathBuf> = std::fs::read_dir(&rec_dir)
             .map(|rd| rd.filter_map(|e| e.ok()).map(|e| e.path()).collect())
             .unwrap_or_default();
-        for path in entries.into_iter().filter(|p| p.extension().is_some_and(|e| e == "json")) {
+        for path in entries
+            .into_iter()
+            .filter(|p| p.extension().is_some_and(|e| e == "json"))
+        {
             let manifest: RecordingManifest = match std::fs::read(&path)
                 .map_err(CaptureError::from)
                 .and_then(|b| serde_json::from_slice(&b).map_err(CaptureError::from))
             {
                 Ok(m) => m,
                 Err(e) => {
-                    tracing::warn!("discarding unreadable recording manifest {}: {e}", path.display());
+                    tracing::warn!(
+                        "discarding unreadable recording manifest {}: {e}",
+                        path.display()
+                    );
                     let _ = std::fs::remove_file(&path);
                     continue;
                 }
@@ -292,7 +325,9 @@ impl CaptureEngine {
             let segs = segments_on_disk(&manifest.session_dir, manifest.segment_secs);
             let result = export_recording(&inner.ffmpeg, &manifest, segs);
             match &result {
-                Ok(clip) => tracing::info!("recovered interrupted recording to {}", clip.path.display()),
+                Ok(clip) => {
+                    tracing::info!("recovered interrupted recording to {}", clip.path.display())
+                }
                 Err(e) => tracing::error!("could not recover recording {}: {e}", manifest.id),
             }
             let _ = std::fs::remove_file(&path);
@@ -353,7 +388,10 @@ impl CaptureEngine {
             let mut inner = self.inner.lock();
             let replay = inner.replay_seconds.ok_or(CaptureError::ReplayNotRunning)?;
             let segment_secs = inner.config.segment_secs;
-            let pipeline = inner.pipeline.as_mut().ok_or(CaptureError::ReplayNotRunning)?;
+            let pipeline = inner
+                .pipeline
+                .as_mut()
+                .ok_or(CaptureError::ReplayNotRunning)?;
             let press = pipeline.now().ok_or(CaptureError::NothingBuffered)?;
             let _ = pipeline.segments.poll();
             let pin = pipeline.segments.segments().front().map_or(0, |s| s.index);
@@ -368,17 +406,32 @@ impl CaptureEngine {
         result
     }
 
-    fn save_replay_pinned(&self, out: &Path, press: f64, seconds: f64, segment_secs: u32) -> Result<SavedClip> {
+    fn save_replay_pinned(
+        &self,
+        out: &Path,
+        press: f64,
+        seconds: f64,
+        segment_secs: u32,
+    ) -> Result<SavedClip> {
         let deadline = Instant::now() + Duration::from_secs(segment_secs as u64 * 2 + 3);
         let (selected, ffmpeg) = loop {
             {
                 let mut inner = self.inner.lock();
                 let ffmpeg = inner.ffmpeg.clone();
-                let pipeline = inner.pipeline.as_mut().ok_or(CaptureError::ReplayNotRunning)?;
+                let pipeline = inner
+                    .pipeline
+                    .as_mut()
+                    .ok_or(CaptureError::ReplayNotRunning)?;
                 let _ = pipeline.segments.poll();
-                let done = pipeline.segments.buffered_until().is_some_and(|t| t >= press - 0.05);
+                let done = pipeline
+                    .segments
+                    .buffered_until()
+                    .is_some_and(|t| t >= press - 0.05);
                 if done || Instant::now() > deadline {
-                    break (segments::select_replay(pipeline.segments.segments(), press, seconds), ffmpeg);
+                    break (
+                        segments::select_replay(pipeline.segments.segments(), press, seconds),
+                        ffmpeg,
+                    );
                 }
             }
             std::thread::sleep(Duration::from_millis(50));
@@ -387,7 +440,10 @@ impl CaptureEngine {
         let max_duration = (press - first.start).max(0.5);
         media::concat_segments(&ffmpeg, &selected, out, Some(max_duration))?;
         let info = media::probe(&ffmpeg, out)?;
-        Ok(SavedClip { path: out.to_path_buf(), info })
+        Ok(SavedClip {
+            path: out.to_path_buf(),
+            info,
+        })
     }
 
     pub fn start_recording(&self, out: &Path) -> Result<()> {
@@ -404,7 +460,11 @@ impl CaptureEngine {
             let _ = pipeline.segments.poll();
             let start = pipeline.now().unwrap_or(0.0);
             // The segment being written now has the next index; pin from there.
-            let pin_from = pipeline.segments.segments().back().map_or(0, |s| s.index + 1);
+            let pin_from = pipeline
+                .segments
+                .segments()
+                .back()
+                .map_or(0, |s| s.index + 1);
             let id = format!("rec-{}", unix_ms());
             let recording = Recording {
                 manifest_path: rec_dir.join(format!("{id}.json")),
@@ -430,7 +490,11 @@ impl CaptureEngine {
 
     pub fn pause_recording(&self) -> Result<()> {
         let mut inner = self.inner.lock();
-        let now = inner.pipeline.as_ref().and_then(|p| p.now()).ok_or(CaptureError::NotRecording)?;
+        let now = inner
+            .pipeline
+            .as_ref()
+            .and_then(|p| p.now())
+            .ok_or(CaptureError::NotRecording)?;
         let rec = inner.recording.as_mut().ok_or(CaptureError::NotRecording)?;
         if !rec.is_paused() {
             rec.manifest.pauses.push((now, None));
@@ -441,7 +505,11 @@ impl CaptureEngine {
 
     pub fn resume_recording(&self) -> Result<()> {
         let mut inner = self.inner.lock();
-        let now = inner.pipeline.as_ref().and_then(|p| p.now()).ok_or(CaptureError::NotRecording)?;
+        let now = inner
+            .pipeline
+            .as_ref()
+            .and_then(|p| p.now())
+            .ok_or(CaptureError::NotRecording)?;
         let rec = inner.recording.as_mut().ok_or(CaptureError::NotRecording)?;
         if let Some((_, end @ None)) = rec.manifest.pauses.last_mut() {
             *end = Some(now);
@@ -463,7 +531,13 @@ impl CaptureEngine {
             rec.persist()?;
             // Keep the recording's segments alive until the export below is done.
             inner.export_pins.push(rec.pin_from);
-            (rec.manifest, rec.manifest_path, rec.pin_from, inner.replay_seconds.is_none(), inner.ffmpeg.clone())
+            (
+                rec.manifest,
+                rec.manifest_path,
+                rec.pin_from,
+                inner.replay_seconds.is_none(),
+                inner.ffmpeg.clone(),
+            )
         };
         let result = self.finish_recording(&manifest, owns_session, &ffmpeg);
         {
@@ -481,7 +555,12 @@ impl CaptureEngine {
         result
     }
 
-    fn finish_recording(&self, manifest: &RecordingManifest, owns_session: bool, ffmpeg: &Ffmpeg) -> Result<SavedClip> {
+    fn finish_recording(
+        &self,
+        manifest: &RecordingManifest,
+        owns_session: bool,
+        ffmpeg: &Ffmpeg,
+    ) -> Result<SavedClip> {
         let stop = manifest.stop.unwrap_or(f64::INFINITY);
         let segs: Vec<Segment> = if owns_session {
             // Nobody else needs the encoder: stop it, which also closes the last segment.
@@ -492,13 +571,20 @@ impl CaptureEngine {
             segments_on_disk(&manifest.session_dir, manifest.segment_secs)
         } else {
             // Wait for the segment containing the stop time to close.
-            let deadline = Instant::now() + Duration::from_secs(manifest.segment_secs as u64 * 2 + 3);
+            let deadline =
+                Instant::now() + Duration::from_secs(manifest.segment_secs as u64 * 2 + 3);
             loop {
                 {
                     let mut inner = self.inner.lock();
-                    let Some(p) = inner.pipeline.as_mut() else { break };
+                    let Some(p) = inner.pipeline.as_mut() else {
+                        break;
+                    };
                     let _ = p.segments.poll();
-                    if p.segments.buffered_until().is_some_and(|t| t >= stop - 0.05) || Instant::now() > deadline {
+                    if p.segments
+                        .buffered_until()
+                        .is_some_and(|t| t >= stop - 0.05)
+                        || Instant::now() > deadline
+                    {
                         break;
                     }
                 }
@@ -565,12 +651,20 @@ impl Drop for CaptureEngine {
     }
 }
 
-fn export_recording(ffmpeg: &Ffmpeg, manifest: &RecordingManifest, segs: Vec<Segment>) -> Result<SavedClip> {
-    let selected = segments::select_recording(segs, manifest.start, manifest.stop, &manifest.pauses);
+fn export_recording(
+    ffmpeg: &Ffmpeg,
+    manifest: &RecordingManifest,
+    segs: Vec<Segment>,
+) -> Result<SavedClip> {
+    let selected =
+        segments::select_recording(segs, manifest.start, manifest.stop, &manifest.pauses);
     let max_duration = segments::trimmed_duration(&selected, manifest.stop);
     media::concat_segments(ffmpeg, &selected, &manifest.output_path, max_duration)?;
     let info = media::probe(ffmpeg, &manifest.output_path)?;
-    Ok(SavedClip { path: manifest.output_path.clone(), info })
+    Ok(SavedClip {
+        path: manifest.output_path.clone(),
+        info,
+    })
 }
 
 /// Lists a session's segments from its list file, plus a trailing segment that was
@@ -578,7 +672,12 @@ fn export_recording(ffmpeg: &Ffmpeg, manifest: &RecordingManifest, segs: Vec<Seg
 fn segments_on_disk(session_dir: &Path, segment_secs: u32) -> Vec<Segment> {
     let mut log = SegmentLog::new(session_dir);
     let _ = log.poll();
-    let mut segs: Vec<Segment> = log.segments().iter().filter(|s| s.path.exists()).cloned().collect();
+    let mut segs: Vec<Segment> = log
+        .segments()
+        .iter()
+        .filter(|s| s.path.exists())
+        .cloned()
+        .collect();
     let last_index = segs.last().map(|s| s.index);
     let mut extra: Vec<(u64, PathBuf)> = std::fs::read_dir(session_dir)
         .map(|rd| {
@@ -586,7 +685,8 @@ fn segments_on_disk(session_dir: &Path, segment_secs: u32) -> Vec<Segment> {
                 .filter_map(|e| {
                     let name = e.file_name().to_str()?.to_owned();
                     let index = segments::segment_index_from_name(&name)?;
-                    (last_index.is_none_or(|l| index > l) && e.metadata().ok()?.len() > 0).then(|| (index, e.path()))
+                    (last_index.is_none_or(|l| index > l) && e.metadata().ok()?.len() > 0)
+                        .then(|| (index, e.path()))
                 })
                 .collect()
         })
@@ -595,14 +695,22 @@ fn segments_on_disk(session_dir: &Path, segment_secs: u32) -> Vec<Segment> {
     let mut t = segs.last().map_or(0.0, |s| s.end);
     for (index, path) in extra {
         debug_assert!(path.extension().is_some_and(|e| e == SEGMENT_EXT));
-        segs.push(Segment { index, path, start: t, end: t + segment_secs as f64 });
+        segs.push(Segment {
+            index,
+            path,
+            start: t,
+            end: t + segment_secs as f64,
+        });
         t += segment_secs as f64;
     }
     segs
 }
 
 fn new_session_dir(inner: &Inner) -> PathBuf {
-    inner.work_dir.join("sessions").join(format!("{}", unix_ms()))
+    inner
+        .work_dir
+        .join("sessions")
+        .join(format!("{}", unix_ms()))
 }
 
 fn stop_pipeline(inner: &mut Inner, delete_buffer: bool) {
@@ -625,7 +733,9 @@ fn ensure_pipeline(inner: &mut Inner) -> Result<Vec<EngineEvent>> {
     if let Some(w) = inner.working.clone() {
         attempts.push(w);
     }
-    let preferred = inner.caps.resolve_encoder(config.video.encoder, config.video.codec)?;
+    let preferred = inner
+        .caps
+        .resolve_encoder(config.video.encoder, config.video.codec)?;
     let d3d11 = is_d3d11_source(&config.video.source);
     for enc in std::iter::once(preferred.clone()).chain(inner.caps.fallbacks_after(&preferred)) {
         if d3d11 && enc.hardware {
@@ -638,16 +748,31 @@ fn ensure_pipeline(inner: &mut Inner) -> Result<Vec<EngineEvent>> {
     let mut last_err = CaptureError::NoEncoder;
     for (i, (encoder, gpu_path)) in attempts.into_iter().enumerate() {
         let dir = new_session_dir(inner);
-        match Pipeline::spawn(&inner.ffmpeg, &inner.caps, &config, &encoder, gpu_path, &dir, inner.controls.clone()) {
+        match Pipeline::spawn(
+            &inner.ffmpeg,
+            &inner.caps,
+            &config,
+            &encoder,
+            gpu_path,
+            &dir,
+            inner.controls.clone(),
+        ) {
             Ok(mut p) => match p.wait_until_running(STARTUP_TIMEOUT) {
                 Ok(()) => {
                     inner.pipeline = Some(p);
                     inner.working = Some((encoder.clone(), gpu_path));
                     inner.last_error = None;
-                    return Ok(vec![EngineEvent::PipelineStarted { encoder, gpu_path, fallback: i > 0 }]);
+                    return Ok(vec![EngineEvent::PipelineStarted {
+                        encoder,
+                        gpu_path,
+                        fallback: i > 0,
+                    }]);
                 }
                 Err(e) => {
-                    tracing::warn!("encoder {} (gpu_path={gpu_path}) failed to start: {e}", encoder.ffmpeg_name);
+                    tracing::warn!(
+                        "encoder {} (gpu_path={gpu_path}) failed to start: {e}",
+                        encoder.ffmpeg_name
+                    );
                     p.stop(Duration::from_secs(1));
                     let _ = std::fs::remove_dir_all(&dir);
                     last_err = e;
@@ -672,7 +797,9 @@ fn ensure_pipeline(inner: &mut Inner) -> Result<Vec<EngineEvent>> {
 /// encoder that died.
 fn maintain(inner: &mut Inner) -> Vec<EngineEvent> {
     let mut events = Vec::new();
-    let Some(pipeline) = inner.pipeline.as_mut() else { return events };
+    let Some(pipeline) = inner.pipeline.as_mut() else {
+        return events;
+    };
     let _ = pipeline.segments.poll();
 
     if let Some(err) = pipeline.audio_error() {
@@ -701,7 +828,9 @@ fn maintain(inner: &mut Inner) -> Vec<EngineEvent> {
         }
     }
 
-    let Some(reason) = pipeline.exit_reason() else { return events };
+    let Some(reason) = pipeline.exit_reason() else {
+        return events;
+    };
     tracing::error!("{reason}");
     let mut dead = inner.pipeline.take().expect("pipeline present");
     dead.stop(Duration::from_millis(100));
@@ -716,19 +845,28 @@ fn maintain(inner: &mut Inner) -> Vec<EngineEvent> {
         if clip.is_some() {
             let _ = std::fs::remove_file(&rec.manifest_path);
         }
-        events.push(EngineEvent::RecordingInterrupted { clip, error: reason.clone() });
+        events.push(EngineEvent::RecordingInterrupted {
+            clip,
+            error: reason.clone(),
+        });
     }
     let _ = std::fs::remove_dir_all(&dead.session_dir);
 
     let will_retry = inner.replay_seconds.is_some() && inner.restarts < MAX_RESTARTS;
-    events.push(EngineEvent::PipelineFailed { error: reason, will_retry });
+    events.push(EngineEvent::PipelineFailed {
+        error: reason,
+        will_retry,
+    });
     if will_retry {
         inner.restarts += 1;
         match ensure_pipeline(inner) {
             Ok(mut started) => events.append(&mut started),
             Err(e) => {
                 inner.replay_seconds = None;
-                events.push(EngineEvent::PipelineFailed { error: e.to_string(), will_retry: false });
+                events.push(EngineEvent::PipelineFailed {
+                    error: e.to_string(),
+                    will_retry: false,
+                });
             }
         }
     } else {

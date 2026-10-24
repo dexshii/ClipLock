@@ -1,21 +1,7 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import { cx } from './ui';
-
-const MODIFIER_CODES = new Set(['ControlLeft', 'ControlRight', 'AltLeft', 'AltRight', 'ShiftLeft', 'ShiftRight', 'MetaLeft', 'MetaRight']);
-
-/** Converts a keyboard event into an accelerator string understood by the global shortcut plugin. */
-export function acceleratorFromEvent(e: KeyboardEvent | React.KeyboardEvent): string | null {
-  if (MODIFIER_CODES.has(e.code)) return null;
-  let key = e.code;
-  if (key.startsWith('Key')) key = key.slice(3);
-  else if (key.startsWith('Digit')) key = key.slice(5);
-  const mods = [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Super'].filter(Boolean) as string[];
-  const isFunctionKey = /^F([1-9]|1[0-9]|2[0-4])$/.test(key);
-  // Require a modifier for ordinary keys so typing in games doesn't trigger ClipLock.
-  if (mods.length === 0 && !isFunctionKey) return null;
-  return [...mods, key].join('+');
-}
+import { acceleratorFromEvent } from '../lib/hotkeys';
 
 export function HotkeyInput({ value, onChange, label }: { value: string | null; onChange: (v: string | null) => void; label: string }) {
   const [listening, setListening] = useState(false);

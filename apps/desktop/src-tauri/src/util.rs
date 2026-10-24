@@ -3,8 +3,8 @@
 use std::path::{Path, PathBuf};
 
 const RESERVED: [&str; 22] = [
-    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1",
-    "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+    "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
 ];
 
 /// Turns arbitrary text (game names, user titles) into a safe single path component on
@@ -21,7 +21,12 @@ pub fn sanitize_file_name(input: &str, fallback: &str) -> String {
     out = out.split_whitespace().collect::<Vec<_>>().join(" ");
     out = out.trim_matches(|c: char| c == '.' || c == ' ').to_string();
     if out.chars().count() > 100 {
-        out = out.chars().take(100).collect::<String>().trim_end().to_string();
+        out = out
+            .chars()
+            .take(100)
+            .collect::<String>()
+            .trim_end()
+            .to_string();
     }
     let stem = out.split('.').next().unwrap_or("").to_ascii_uppercase();
     if out.is_empty() || RESERVED.contains(&stem.as_str()) {
@@ -56,13 +61,22 @@ mod tests {
 
     #[test]
     fn sanitizes_names() {
-        assert_eq!(sanitize_file_name("Counter-Strike 2", "x"), "Counter-Strike 2");
+        assert_eq!(
+            sanitize_file_name("Counter-Strike 2", "x"),
+            "Counter-Strike 2"
+        );
         assert_eq!(sanitize_file_name("../../etc/passwd", "x"), "etc passwd");
-        assert_eq!(sanitize_file_name("a:b*c?d\"e<f>g|h", "x"), "a b c d e f g h");
+        assert_eq!(
+            sanitize_file_name("a:b*c?d\"e<f>g|h", "x"),
+            "a b c d e f g h"
+        );
         assert_eq!(sanitize_file_name("CON", "Clip"), "Clip");
         assert_eq!(sanitize_file_name("nul.txt", "Clip"), "Clip");
         assert_eq!(sanitize_file_name("  ...  ", "Clip"), "Clip");
-        assert_eq!(sanitize_file_name("tab\there\nnewline", "x"), "tab here newline");
+        assert_eq!(
+            sanitize_file_name("tab\there\nnewline", "x"),
+            "tab here newline"
+        );
         assert_eq!(sanitize_file_name(&"x".repeat(300), "x").len(), 100);
     }
 

@@ -19,19 +19,30 @@ fn concat_quote(path: &Path) -> String {
 }
 
 fn part_path(out: &Path) -> PathBuf {
-    let mut name = out.file_name().map(|n| n.to_os_string()).unwrap_or_default();
+    let mut name = out
+        .file_name()
+        .map(|n| n.to_os_string())
+        .unwrap_or_default();
     name.push(".part");
     out.with_file_name(name)
 }
 
 fn ffmpeg_failed(context: &str, stderr: &str) -> CaptureError {
     let tail: Vec<&str> = stderr.lines().rev().take(5).collect();
-    CaptureError::Ffmpeg(format!("{context}: {}", tail.into_iter().rev().collect::<Vec<_>>().join(" | ")))
+    CaptureError::Ffmpeg(format!(
+        "{context}: {}",
+        tail.into_iter().rev().collect::<Vec<_>>().join(" | ")
+    ))
 }
 
 /// Losslessly joins keyframe-aligned segments into an MP4 with the index at the front
 /// (fast start). `max_duration` cuts the tail, which is safe without re-encoding.
-pub fn concat_segments(ffmpeg: &Ffmpeg, segments: &[Segment], out: &Path, max_duration: Option<f64>) -> Result<()> {
+pub fn concat_segments(
+    ffmpeg: &Ffmpeg,
+    segments: &[Segment],
+    out: &Path,
+    max_duration: Option<f64>,
+) -> Result<()> {
     if segments.is_empty() {
         return Err(CaptureError::NothingBuffered);
     }
@@ -50,9 +61,28 @@ pub fn concat_segments(ffmpeg: &Ffmpeg, segments: &[Segment], out: &Path, max_du
 
     let tmp = part_path(out);
     let mut cmd = ffmpeg.command();
-    cmd.args(["-nostdin", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i"])
-        .arg(&list_path)
-        .args(["-map", "0:v", "-map", "0:a?", "-c", "copy", "-avoid_negative_ts", "make_zero"]);
+    cmd.args([
+        "-nostdin",
+        "-y",
+        "-loglevel",
+        "error",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+    ])
+    .arg(&list_path)
+    .args([
+        "-map",
+        "0:v",
+        "-map",
+        "0:a?",
+        "-c",
+        "copy",
+        "-avoid_negative_ts",
+        "make_zero",
+    ]);
     if let Some(d) = max_duration {
         cmd.args(["-t", &format!("{d:.3}")]);
     }
@@ -116,7 +146,15 @@ fn parse_rate(r: &str) -> f64 {
 
 pub fn probe(ffmpeg: &Ffmpeg, path: &Path) -> Result<MediaInfo> {
     let mut cmd = ffmpeg.probe_command();
-    cmd.args(["-v", "error", "-print_format", "json", "-show_format", "-show_streams"]).arg(path);
+    cmd.args([
+        "-v",
+        "error",
+        "-print_format",
+        "json",
+        "-show_format",
+        "-show_streams",
+    ])
+    .arg(path);
     let out = run_with_timeout(&mut cmd, Duration::from_secs(30))?;
     if !out.success {
         return Err(ffmpeg_failed("probing failed", &out.stderr));
@@ -138,24 +176,55 @@ pub fn probe(ffmpeg: &Ffmpeg, path: &Path) -> Result<MediaInfo> {
         duration_secs: duration,
         width: video.width.unwrap_or(0),
         height: video.height.unwrap_or(0),
-        fps: video.avg_frame_rate.as_deref().map(parse_rate).unwrap_or(0.0),
+        fps: video
+            .avg_frame_rate
+            .as_deref()
+            .map(parse_rate)
+            .unwrap_or(0.0),
         video_codec: video.codec_name.clone().unwrap_or_default(),
-        audio_tracks: parsed.streams.iter().filter(|s| s.codec_type.as_deref() == Some("audio")).count() as u32,
+        audio_tracks: parsed
+            .streams
+            .iter()
+            .filter(|s| s.codec_type.as_deref() == Some("audio"))
+            .count() as u32,
         size_bytes: std::fs::metadata(path)?.len(),
     })
 }
 
 /// Writes a JPEG thumbnail taken at `at_secs` (clamped into the clip).
-pub fn thumbnail(ffmpeg: &Ffmpeg, video: &Path, out: &Path, at_secs: f64, width: u32) -> Result<()> {
+pub fn thumbnail(
+    ffmpeg: &Ffmpeg,
+    video: &Path,
+    out: &Path,
+    at_secs: f64,
+    width: u32,
+) -> Result<()> {
     if let Some(parent) = out.parent() {
         std::fs::create_dir_all(parent)?;
     }
     let tmp = out.with_extension("part.jpg");
     let mut cmd = ffmpeg.command();
-    cmd.args(["-nostdin", "-y", "-loglevel", "error", "-ss", &format!("{:.3}", at_secs.max(0.0)), "-i"])
-        .arg(video)
-        .args(["-frames:v", "1", "-vf", &format!("scale={width}:-2"), "-q:v", "4", "-f", "image2"])
-        .arg(&tmp);
+    cmd.args([
+        "-nostdin",
+        "-y",
+        "-loglevel",
+        "error",
+        "-ss",
+        &format!("{:.3}", at_secs.max(0.0)),
+        "-i",
+    ])
+    .arg(video)
+    .args([
+        "-frames:v",
+        "1",
+        "-vf",
+        &format!("scale={width}:-2"),
+        "-q:v",
+        "4",
+        "-f",
+        "image2",
+    ])
+    .arg(&tmp);
     let out_cmd = run_with_timeout(&mut cmd, Duration::from_secs(30))?;
     if !out_cmd.success || !tmp.exists() {
         let _ = std::fs::remove_file(&tmp);
@@ -221,20 +290,44 @@ fn atempo_chain(speed: f64) -> String {
 }
 
 /// Arguments for an edit export (without the leading ffmpeg path).
-pub fn edit_args(spec: &EditSpec, encoder: Option<&EncoderInfo>, has_audio: bool, tmp_out: &Path) -> Vec<String> {
-    let mut a: Vec<String> = ["-nostdin", "-y", "-loglevel", "error", "-progress", "pipe:1", "-nostats"]
-        .map(String::from)
-        .to_vec();
+pub fn edit_args(
+    spec: &EditSpec,
+    encoder: Option<&EncoderInfo>,
+    has_audio: bool,
+    tmp_out: &Path,
+) -> Vec<String> {
+    let mut a: Vec<String> = [
+        "-nostdin",
+        "-y",
+        "-loglevel",
+        "error",
+        "-progress",
+        "pipe:1",
+        "-nostats",
+    ]
+    .map(String::from)
+    .to_vec();
     let duration = spec.trim_end_secs - spec.trim_start_secs;
     // Both as input options: -t then limits the source range, not the (re-timed) output.
-    a.extend(["-ss".into(), format!("{:.3}", spec.trim_start_secs), "-t".into(), format!("{duration:.3}"), "-i".into()]);
+    a.extend([
+        "-ss".into(),
+        format!("{:.3}", spec.trim_start_secs),
+        "-t".into(),
+        format!("{duration:.3}"),
+        "-i".into(),
+    ]);
     a.push(spec.input.to_string_lossy().into_owned());
     a.extend(["-map".into(), "0:v:0".into()]);
     if has_audio && !spec.mute {
         a.extend(["-map".into(), "0:a:0".into()]);
     }
     if spec.lossless {
-        a.extend(["-c".into(), "copy".into(), "-avoid_negative_ts".into(), "make_zero".into()]);
+        a.extend([
+            "-c".into(),
+            "copy".into(),
+            "-avoid_negative_ts".into(),
+            "make_zero".into(),
+        ]);
     } else {
         let mut vf = Vec::new();
         if spec.speed != 1.0 {
@@ -243,18 +336,53 @@ pub fn edit_args(spec: &EditSpec, encoder: Option<&EncoderInfo>, has_audio: bool
         vf.push("format=yuv420p".into());
         a.extend(["-vf".into(), vf.join(",")]);
         match encoder {
-            Some(e) if e.kind == EncoderKind::Nvenc => {
-                a.extend(["-c:v", &e.ffmpeg_name, "-preset", "p5", "-rc", "vbr", "-cq", "21", "-b:v", "0"].map(String::from))
-            }
-            Some(e) if e.kind == EncoderKind::Amf => {
-                a.extend(["-c:v", &e.ffmpeg_name, "-quality", "quality", "-rc", "cqp", "-qp_i", "20", "-qp_p", "22"].map(String::from))
-            }
-            Some(e) if e.kind == EncoderKind::Qsv => {
-                a.extend(["-c:v", &e.ffmpeg_name, "-preset", "medium", "-global_quality", "22"].map(String::from))
-            }
-            Some(e) if e.ffmpeg_name != "libx264" => {
-                a.extend(["-c:v".to_string(), e.ffmpeg_name.clone(), "-b:v".into(), "12M".into()])
-            }
+            Some(e) if e.kind == EncoderKind::Nvenc => a.extend(
+                [
+                    "-c:v",
+                    &e.ffmpeg_name,
+                    "-preset",
+                    "p5",
+                    "-rc",
+                    "vbr",
+                    "-cq",
+                    "21",
+                    "-b:v",
+                    "0",
+                ]
+                .map(String::from),
+            ),
+            Some(e) if e.kind == EncoderKind::Amf => a.extend(
+                [
+                    "-c:v",
+                    &e.ffmpeg_name,
+                    "-quality",
+                    "quality",
+                    "-rc",
+                    "cqp",
+                    "-qp_i",
+                    "20",
+                    "-qp_p",
+                    "22",
+                ]
+                .map(String::from),
+            ),
+            Some(e) if e.kind == EncoderKind::Qsv => a.extend(
+                [
+                    "-c:v",
+                    &e.ffmpeg_name,
+                    "-preset",
+                    "medium",
+                    "-global_quality",
+                    "22",
+                ]
+                .map(String::from),
+            ),
+            Some(e) if e.ffmpeg_name != "libx264" => a.extend([
+                "-c:v".to_string(),
+                e.ffmpeg_name.clone(),
+                "-b:v".into(),
+                "12M".into(),
+            ]),
             _ => a.extend(["-c:v", "libx264", "-preset", "fast", "-crf", "20"].map(String::from)),
         }
         if has_audio && !spec.mute {
@@ -291,10 +419,14 @@ pub fn export_edit(
     }
     let tmp = part_path(&spec.output);
     let args = edit_args(spec, encoder, info.audio_tracks > 0, &tmp);
-    let output_duration = (spec.trim_end_secs.min(info.duration_secs) - spec.trim_start_secs) / spec.speed;
+    let output_duration =
+        (spec.trim_end_secs.min(info.duration_secs) - spec.trim_start_secs) / spec.speed;
 
     let mut cmd = ffmpeg.command();
-    cmd.args(&args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    cmd.args(&args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     let mut child = cmd.spawn()?;
     let stderr = child.stderr.take().expect("piped");
     let err_thread = std::thread::spawn(move || {
@@ -335,7 +467,10 @@ mod tests {
     #[test]
     fn quotes_concat_paths() {
         assert_eq!(concat_quote(Path::new("/a/it's.ts")), r"'/a/it'\''s.ts'");
-        assert_eq!(concat_quote(Path::new(r"C:\Clips\a.ts")), r"'C:\Clips\a.ts'");
+        assert_eq!(
+            concat_quote(Path::new(r"C:\Clips\a.ts")),
+            r"'C:\Clips\a.ts'"
+        );
     }
 
     #[test]

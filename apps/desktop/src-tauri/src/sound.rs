@@ -25,16 +25,27 @@ pub fn play(paths: &crate::paths::AppPaths, cue: Cue) {
 
 #[cfg(windows)]
 fn play_file(path: &Path) {
+    use std::os::windows::ffi::OsStrExt;
     use windows::core::PCWSTR;
     use windows::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_FILENAME, SND_NODEFAULT};
-    use std::os::windows::ffi::OsStrExt;
-    let wide: Vec<u16> = path.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+    let wide: Vec<u16> = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
     unsafe {
-        let _ = PlaySoundW(PCWSTR(wide.as_ptr()), None, SND_ASYNC | SND_FILENAME | SND_NODEFAULT);
+        let _ = PlaySoundW(
+            PCWSTR(wide.as_ptr()),
+            None,
+            SND_ASYNC | SND_FILENAME | SND_NODEFAULT,
+        );
     }
 }
 
 #[cfg(not(windows))]
 fn play_file(path: &Path) {
-    tracing::debug!("sound cue {} (playback only implemented on Windows)", path.display());
+    tracing::debug!(
+        "sound cue {} (playback only implemented on Windows)",
+        path.display()
+    );
 }

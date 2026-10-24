@@ -8,7 +8,8 @@ use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 pub fn init(log_dir: &Path) -> Option<WorkerGuard> {
-    let filter = EnvFilter::try_from_env("CLIPLOCK_LOG").unwrap_or_else(|_| EnvFilter::new("info,ffmpeg=warn"));
+    let filter = EnvFilter::try_from_env("CLIPLOCK_LOG")
+        .unwrap_or_else(|_| EnvFilter::new("info,ffmpeg=warn"));
     let appender = tracing_appender::rolling::Builder::new()
         .rotation(tracing_appender::rolling::Rotation::DAILY)
         .filename_prefix("cliplock")
@@ -18,7 +19,10 @@ pub fn init(log_dir: &Path) -> Option<WorkerGuard> {
     let (file_layer, guard) = match appender {
         Ok(appender) => {
             let (writer, guard) = tracing_appender::non_blocking(appender);
-            (Some(fmt::layer().with_ansi(false).with_writer(writer)), Some(guard))
+            (
+                Some(fmt::layer().with_ansi(false).with_writer(writer)),
+                Some(guard),
+            )
         }
         Err(e) => {
             eprintln!("file logging unavailable: {e}");

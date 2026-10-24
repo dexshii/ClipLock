@@ -21,14 +21,31 @@ pub fn list_devices() -> Result<Vec<AudioDevice>> {
     let _ = wasapi::initialize_mta();
     let enumerator = DeviceEnumerator::new().map_err(audio_err)?;
     let mut devices = Vec::new();
-    for (direction, kind) in [(Direction::Render, AudioDeviceKind::Output), (Direction::Capture, AudioDeviceKind::Input)] {
-        let default_id = enumerator.get_default_device(&direction).ok().and_then(|d| d.get_id().ok());
-        let collection = enumerator.get_device_collection(&direction).map_err(audio_err)?;
+    for (direction, kind) in [
+        (Direction::Render, AudioDeviceKind::Output),
+        (Direction::Capture, AudioDeviceKind::Input),
+    ] {
+        let default_id = enumerator
+            .get_default_device(&direction)
+            .ok()
+            .and_then(|d| d.get_id().ok());
+        let collection = enumerator
+            .get_device_collection(&direction)
+            .map_err(audio_err)?;
         let count = collection.get_nbr_devices().map_err(audio_err)?;
         for i in 0..count {
-            let Ok(device) = collection.get_device_at_index(i) else { continue };
-            let (Ok(id), Ok(name)) = (device.get_id(), device.get_friendlyname()) else { continue };
-            devices.push(AudioDevice { is_default: Some(&id) == default_id.as_ref(), id, name, kind });
+            let Ok(device) = collection.get_device_at_index(i) else {
+                continue;
+            };
+            let (Ok(id), Ok(name)) = (device.get_id(), device.get_friendlyname()) else {
+                continue;
+            };
+            devices.push(AudioDevice {
+                is_default: Some(&id) == default_id.as_ref(),
+                id,
+                name,
+                kind,
+            });
         }
     }
     Ok(devices)
@@ -53,17 +70,26 @@ impl WasapiInput {
             let queue = queue.clone();
             let stop = stop.clone();
             let error = error.clone();
-            std::thread::Builder::new().name(format!("cliplock-wasapi-{kind:?}")).spawn(move || {
-                if let Err(e) = capture_thread(kind, device_id, &queue, &stop, &ready_tx) {
-                    let _ = ready_tx.send(Err(e.clone()));
-                    *error.lock() = Some(e);
-                }
-            })?
+            std::thread::Builder::new()
+                .name(format!("cliplock-wasapi-{kind:?}"))
+                .spawn(move || {
+                    if let Err(e) = capture_thread(kind, device_id, &queue, &stop, &ready_tx) {
+                        let _ = ready_tx.send(Err(e.clone()));
+                        *error.lock() = Some(e);
+                    }
+                })?
         };
         match ready_rx.recv() {
-            Ok(Ok(())) => Ok(Self { queue, stop, error, thread: Some(thread) }),
+            Ok(Ok(())) => Ok(Self {
+                queue,
+                stop,
+                error,
+                thread: Some(thread),
+            }),
             Ok(Err(e)) => Err(CaptureError::Audio(e)),
-            Err(_) => Err(CaptureError::Audio("audio thread exited during startup".into())),
+            Err(_) => Err(CaptureError::Audio(
+                "audio thread exited during startup".into(),
+            )),
         }
     }
 }
@@ -84,15 +110,29 @@ fn capture_thread(
     };
     let device = match &device_id {
         Some(id) => enumerator.get_device(id).map_err(s)?,
-        None => enumerator.get_default_device(&endpoint_direction).map_err(s)?,
+        None => enumerator
+            .get_default_device(&endpoint_direction)
+            .map_err(s)?,
     };
     let mut client = device.get_iaudioclient().map_err(s)?;
-    let format = WaveFormat::new(32, 32, &SampleType::Float, SAMPLE_RATE as usize, CHANNELS, None);
+    let format = WaveFormat::new(
+        32,
+        32,
+        &SampleType::Float,
+        SAMPLE_RATE as usize,
+        CHANNELS,
+        None,
+    );
     let (default_period, _) = client.get_device_period().map_err(s)?;
     // Capture streams are always initialized with Direction::Capture; on a render
     // endpoint this enables loopback.
-    let mode = StreamMode::EventsShared { autoconvert: true, buffer_duration_hns: default_period * 4 };
-    client.initialize_client(&format, &Direction::Capture, &mode).map_err(s)?;
+    let mode = StreamMode::EventsShared {
+        autoconvert: true,
+        buffer_duration_hns: default_period * 4,
+    };
+    client
+        .initialize_client(&format, &Direction::Capture, &mode)
+        .map_err(s)?;
     let event = client.set_get_eventhandle().map_err(s)?;
     let capture = client.get_audiocaptureclient().map_err(s)?;
     client.start_stream().map_err(s)?;
@@ -116,7 +156,9 @@ fn capture_thread(
                         let (a, b) = bytes.as_slices();
                         let contiguous: Vec<u8> = [a, b].concat();
                         samples.extend(
-                            contiguous.chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])),
+                            contiguous
+                                .chunks_exact(4)
+                                .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])),
                         );
                     }
                 }

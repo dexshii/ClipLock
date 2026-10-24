@@ -61,7 +61,9 @@ pub fn get_app_info(app: AppHandle) -> AppInfo {
 #[tauri::command]
 pub fn open_log_dir(app: AppHandle) -> AppResult<()> {
     let dir = app.state::<AppState>().paths.log_dir.clone();
-    app.opener().open_path(dir.to_string_lossy(), None::<&str>).map_err(|e| AppError::Invalid(e.to_string()))
+    app.opener()
+        .open_path(dir.to_string_lossy(), None::<&str>)
+        .map_err(|e| AppError::Invalid(e.to_string()))
 }
 
 #[tauri::command]
@@ -102,21 +104,34 @@ pub async fn update_settings(app: AppHandle, settings: AppSettings) -> AppResult
         }
         settings.save(&st.paths.config_dir)?;
 
-        let hotkey_failures =
-            if old.hotkeys != settings.hotkeys { crate::hotkeys::apply(&app, &settings.hotkeys) } else { Vec::new() };
+        let hotkey_failures = if old.hotkeys != settings.hotkeys {
+            crate::hotkeys::apply(&app, &settings.hotkeys)
+        } else {
+            Vec::new()
+        };
         if old.general.launch_on_startup != settings.general.launch_on_startup {
             let al = app.autolaunch();
-            let r = if settings.general.launch_on_startup { al.enable() } else { al.disable() };
+            let r = if settings.general.launch_on_startup {
+                al.enable()
+            } else {
+                al.disable()
+            };
             if let Err(e) = r {
                 tracing::warn!("autostart update failed: {e}");
             }
         }
         if old.general.custom_games != settings.general.custom_games {
-            *st.games.db.write() = GameDb::load(&st.paths.resource("games.json"), &settings.general.custom_games);
+            *st.games.db.write() = GameDb::load(
+                &st.paths.resource("games.json"),
+                &settings.general.custom_games,
+            );
         }
         crate::tray::refresh(&app);
         let _ = app.emit("settings-changed", &settings);
-        Ok(SettingsUpdate { settings, hotkey_failures })
+        Ok(SettingsUpdate {
+            settings,
+            hotkey_failures,
+        })
     })
     .await
 }
@@ -160,7 +175,10 @@ pub async fn toggle_pause(app: AppHandle) -> AppResult<()> {
 
 #[tauri::command]
 pub fn set_mic_muted(app: AppHandle, muted: bool) -> AppResult<()> {
-    app.state::<AppState>().recorder.engine()?.set_mic_muted(muted);
+    app.state::<AppState>()
+        .recorder
+        .engine()?
+        .set_mic_muted(muted);
     recorder::emit_state(&app);
     Ok(())
 }
@@ -170,7 +188,9 @@ pub fn reprobe_hardware(app: AppHandle) -> AppResult<()> {
     let st = app.state::<AppState>();
     if let Ok(engine) = st.recorder.engine() {
         if engine.status().recording.is_some() {
-            return Err(AppError::Invalid("stop the recording before re-detecting hardware".into()));
+            return Err(AppError::Invalid(
+                "stop the recording before re-detecting hardware".into(),
+            ));
         }
     }
     recorder::initialize(app.clone(), true);
@@ -195,8 +215,14 @@ pub struct GameOption {
 pub fn list_games(app: AppHandle) -> Vec<GameOption> {
     let st = app.state::<AppState>();
     let db = st.games.db.read();
-    let mut games: Vec<GameOption> =
-        db.entries().iter().map(|g| GameOption { id: g.id.clone(), name: g.name.clone() }).collect();
+    let mut games: Vec<GameOption> = db
+        .entries()
+        .iter()
+        .map(|g| GameOption {
+            id: g.id.clone(),
+            name: g.name.clone(),
+        })
+        .collect();
     games.sort_by_key(|g| g.name.to_lowercase());
     games
 }
@@ -212,7 +238,13 @@ pub fn set_manual_game(app: AppHandle, name: Option<String>) {
 
 #[tauri::command]
 pub async fn list_clips(app: AppHandle, query: Option<ClipQuery>) -> AppResult<Vec<Clip>> {
-    blocking(move || db::list_clips(&app.state::<AppState>().db.lock(), &query.unwrap_or_default())).await
+    blocking(move || {
+        db::list_clips(
+            &app.state::<AppState>().db.lock(),
+            &query.unwrap_or_default(),
+        )
+    })
+    .await
 }
 
 #[tauri::command]
@@ -248,7 +280,10 @@ pub async fn delete_clip(app: AppHandle, id: String, delete_file: bool) -> AppRe
                 }
                 file_removed = true;
             } else {
-                tracing::warn!("not deleting {} (outside the clip folder)", clip.file_path.display());
+                tracing::warn!(
+                    "not deleting {} (outside the clip folder)",
+                    clip.file_path.display()
+                );
             }
         }
         if let Some(thumb) = &clip.thumbnail_path {
@@ -269,7 +304,9 @@ pub fn reveal_clip(app: AppHandle, id: String) -> AppResult<()> {
     if !clip.file_path.exists() {
         return Err(AppError::NotFound("the video file no longer exists".into()));
     }
-    app.opener().reveal_item_in_dir(&clip.file_path).map_err(|e| AppError::Invalid(e.to_string()))
+    app.opener()
+        .reveal_item_in_dir(&clip.file_path)
+        .map_err(|e| AppError::Invalid(e.to_string()))
 }
 
 #[tauri::command]
@@ -279,7 +316,10 @@ pub async fn export_clip(app: AppHandle, id: String, destination: PathBuf) -> Ap
         if destination == clip.file_path {
             return Err(AppError::Invalid("choose a different location".into()));
         }
-        if destination.extension().is_none_or(|e| !e.eq_ignore_ascii_case("mp4")) {
+        if destination
+            .extension()
+            .is_none_or(|e| !e.eq_ignore_ascii_case("mp4"))
+        {
             return Err(AppError::Invalid("export as an .mp4 file".into()));
         }
         std::fs::copy(&clip.file_path, &destination)?;
@@ -300,7 +340,9 @@ pub struct StorageInfo {
 }
 
 fn dir_size(path: &std::path::Path) -> u64 {
-    let Ok(rd) = std::fs::read_dir(path) else { return 0 };
+    let Ok(rd) = std::fs::read_dir(path) else {
+        return 0;
+    };
     rd.filter_map(|e| e.ok())
         .map(|e| match e.metadata() {
             Ok(m) if m.is_dir() => dir_size(&e.path()),
@@ -343,7 +385,11 @@ pub async fn storage_info(app: AppHandle) -> AppResult<StorageInfo> {
 }
 
 #[tauri::command]
-pub async fn regenerate_thumbnail(app: AppHandle, id: String, at_secs: Option<f64>) -> AppResult<Clip> {
+pub async fn regenerate_thumbnail(
+    app: AppHandle,
+    id: String,
+    at_secs: Option<f64>,
+) -> AppResult<Clip> {
     blocking(move || {
         let st = app.state::<AppState>();
         let clip = db::get_clip(&st.db.lock(), &id)?;
@@ -395,7 +441,11 @@ pub async fn export_edit(app: AppHandle, id: String, request: EditRequest) -> Ap
             .filter(|t| !t.is_empty())
             .map(str::to_string)
             .unwrap_or_else(|| format!("{} (edit)", source.title));
-        let dir = source.file_path.parent().map(PathBuf::from).ok_or_else(|| AppError::Invalid("bad clip path".into()))?;
+        let dir = source
+            .file_path
+            .parent()
+            .map(PathBuf::from)
+            .ok_or_else(|| AppError::Invalid("bad clip path".into()))?;
         let output = unique_path(&dir, &sanitize_file_name(&title, "Edited clip"), "mp4");
         let spec = cliplock_capture::EditSpec {
             input: source.file_path.clone(),
@@ -408,19 +458,29 @@ pub async fn export_edit(app: AppHandle, id: String, request: EditRequest) -> Ap
             lossless: request.lossless,
         };
         // Edits are for sharing, so always produce H.264 (fastest available encoder).
-        let encoder = st
-            .recorder
-            .capabilities()
-            .and_then(|c| c.encoders.into_iter().find(|e| e.codec == cliplock_capture::Codec::H264));
+        let encoder = st.recorder.capabilities().and_then(|c| {
+            c.encoders
+                .into_iter()
+                .find(|e| e.codec == cliplock_capture::Codec::H264)
+        });
         let clip_id = source.id.clone();
         let mut last_emit = 0.0;
         let info = cliplock_capture::media::export_edit(&ffmpeg, &spec, encoder.as_ref(), |p| {
             if p - last_emit >= 0.01 || p >= 1.0 {
                 last_emit = p;
-                let _ = app.emit("export-progress", ExportProgress { clip_id: clip_id.clone(), progress: p });
+                let _ = app.emit(
+                    "export-progress",
+                    ExportProgress {
+                        clip_id: clip_id.clone(),
+                        progress: p,
+                    },
+                );
             }
         })?;
-        let saved = cliplock_capture::SavedClip { path: spec.output.clone(), info };
+        let saved = cliplock_capture::SavedClip {
+            path: spec.output.clone(),
+            info,
+        };
         recorder::add_to_library(&app, &saved, ClipKind::Edit, &title, Some(source.id))
     })
     .await

@@ -64,12 +64,22 @@ impl Pipeline {
         std::fs::create_dir_all(session_dir)?;
         let audio = AudioRuntime::start(&config.audio, controls)?;
         let tracks = audio.as_ref().map(|a| a.tracks.clone()).unwrap_or_default();
-        let plan = SessionPlan { config, caps, encoder, gpu_path, session_dir, audio_tracks: &tracks };
+        let plan = SessionPlan {
+            config,
+            caps,
+            encoder,
+            gpu_path,
+            session_dir,
+            audio_tracks: &tracks,
+        };
         let args = build_args(&plan);
         tracing::info!(encoder = %encoder.ffmpeg_name, gpu_path, "starting encoder: ffmpeg {}", args.join(" "));
 
         let mut cmd = ffmpeg.command();
-        cmd.args(&args).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        cmd.args(&args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
         let mut child = cmd.spawn()?;
         platform::bind_child_to_process(&child);
 
@@ -78,44 +88,58 @@ impl Pipeline {
         {
             let stdout = child.stdout.take().expect("piped");
             let progress = progress.clone();
-            std::thread::Builder::new().name("cliplock-ffmpeg-progress".into()).spawn(move || {
-                let mut current = Progress::default();
-                for line in BufReader::new(stdout).lines().map_while(|l| l.ok()) {
-                    let Some((key, value)) = line.split_once('=') else { continue };
-                    match key {
-                        "out_time_us" | "out_time_ms" => {
-                            // Despite its name, out_time_ms is also in microseconds.
-                            if let Ok(us) = value.trim().parse::<i64>() {
-                                current.out_time = us.max(0) as f64 / 1e6;
+            std::thread::Builder::new()
+                .name("cliplock-ffmpeg-progress".into())
+                .spawn(move || {
+                    let mut current = Progress::default();
+                    for line in BufReader::new(stdout).lines().map_while(|l| l.ok()) {
+                        let Some((key, value)) = line.split_once('=') else {
+                            continue;
+                        };
+                        match key {
+                            "out_time_us" | "out_time_ms" => {
+                                // Despite its name, out_time_ms is also in microseconds.
+                                if let Ok(us) = value.trim().parse::<i64>() {
+                                    current.out_time = us.max(0) as f64 / 1e6;
+                                }
                             }
+                            "frame" => {
+                                current.frames = value.trim().parse().unwrap_or(current.frames)
+                            }
+                            "drop_frames" => {
+                                current.dropped = value.trim().parse().unwrap_or(current.dropped)
+                            }
+                            "speed" => {
+                                current.speed = value
+                                    .trim()
+                                    .trim_end_matches('x')
+                                    .parse()
+                                    .unwrap_or(current.speed)
+                            }
+                            "progress" => {
+                                current.at = Some(Instant::now());
+                                *progress.lock() = current;
+                            }
+                            _ => {}
                         }
-                        "frame" => current.frames = value.trim().parse().unwrap_or(current.frames),
-                        "drop_frames" => current.dropped = value.trim().parse().unwrap_or(current.dropped),
-                        "speed" => {
-                            current.speed = value.trim().trim_end_matches('x').parse().unwrap_or(current.speed)
-                        }
-                        "progress" => {
-                            current.at = Some(Instant::now());
-                            *progress.lock() = current;
-                        }
-                        _ => {}
                     }
-                }
-            })?;
+                })?;
         }
         {
             let stderr = child.stderr.take().expect("piped");
             let tail = stderr_tail.clone();
-            std::thread::Builder::new().name("cliplock-ffmpeg-log".into()).spawn(move || {
-                for line in BufReader::new(stderr).lines().map_while(|l| l.ok()) {
-                    tracing::debug!(target: "ffmpeg", "{line}");
-                    let mut t = tail.lock();
-                    if t.len() == STDERR_TAIL_LINES {
-                        t.pop_front();
+            std::thread::Builder::new()
+                .name("cliplock-ffmpeg-log".into())
+                .spawn(move || {
+                    for line in BufReader::new(stderr).lines().map_while(|l| l.ok()) {
+                        tracing::debug!(target: "ffmpeg", "{line}");
+                        let mut t = tail.lock();
+                        if t.len() == STDERR_TAIL_LINES {
+                            t.pop_front();
+                        }
+                        t.push_back(line);
                     }
-                    t.push_back(line);
-                }
-            })?;
+                })?;
         }
 
         let stdin = child.stdin.take();
@@ -142,7 +166,11 @@ impl Pipeline {
 
     pub fn stats(&self) -> PipelineStats {
         let p = *self.progress.lock();
-        PipelineStats { frames: p.frames, dropped_frames: p.dropped, speed: p.speed }
+        PipelineStats {
+            frames: p.frames,
+            dropped_frames: p.dropped,
+            speed: p.speed,
+        }
     }
 
     pub fn audio_error(&self) -> Option<String> {
@@ -152,7 +180,10 @@ impl Pipeline {
     /// Returns `Some(reason)` once the encoder process has exited.
     pub fn exit_reason(&mut self) -> Option<String> {
         match self.child.try_wait() {
-            Ok(Some(status)) => Some(format!("encoder exited with {status}: {}", self.stderr_tail())),
+            Ok(Some(status)) => Some(format!(
+                "encoder exited with {status}: {}",
+                self.stderr_tail()
+            )),
             Ok(None) => None,
             Err(e) => Some(e.to_string()),
         }
@@ -160,7 +191,13 @@ impl Pipeline {
 
     pub fn stderr_tail(&self) -> String {
         let tail = self.stderr_tail.lock();
-        tail.iter().rev().take(6).rev().cloned().collect::<Vec<_>>().join(" | ")
+        tail.iter()
+            .rev()
+            .take(6)
+            .rev()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(" | ")
     }
 
     /// Waits until the encoder reports output, or fails if it dies first.

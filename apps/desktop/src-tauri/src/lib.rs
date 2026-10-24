@@ -45,18 +45,26 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let settings = AppSettings::load(&paths.config_dir);
     let clips_dir = settings.clips_dir(&paths.default_clips_dir);
     std::fs::create_dir_all(&clips_dir)?;
-    app.asset_protocol_scope().allow_directory(&clips_dir, true)?;
-    app.asset_protocol_scope().allow_directory(&paths.thumbnails_dir, true)?;
+    app.asset_protocol_scope()
+        .allow_directory(&clips_dir, true)?;
+    app.asset_protocol_scope()
+        .allow_directory(&paths.thumbnails_dir, true)?;
 
     let conn = db::open(&paths.data_dir.join("cliplock.db"))?;
-    let game_db = GameDb::load(&paths.resource("games.json"), &settings.general.custom_games);
+    let game_db = GameDb::load(
+        &paths.resource("games.json"),
+        &settings.general.custom_games,
+    );
     app.manage(hotkeys::HotkeyMap::default());
     app.manage(AppState {
         paths,
         settings: RwLock::new(settings.clone()),
         db: Mutex::new(conn),
         recorder: Default::default(),
-        games: GameService { db: RwLock::new(game_db), ..Default::default() },
+        games: GameService {
+            db: RwLock::new(game_db),
+            ..Default::default()
+        },
     });
 
     tray::create(&handle)?;
@@ -66,7 +74,11 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     }
     let autostart = handle.autolaunch();
     if autostart.is_enabled().unwrap_or(false) != settings.general.launch_on_startup {
-        let _ = if settings.general.launch_on_startup { autostart.enable() } else { autostart.disable() };
+        let _ = if settings.general.launch_on_startup {
+            autostart.enable()
+        } else {
+            autostart.disable()
+        };
     }
 
     let launched_minimized = std::env::args().any(|a| a == "--minimized");
@@ -103,7 +115,8 @@ fn start_game_detection(app: AppHandle) {
                 let detected = games::detect(&st.games.db.read(), fg.as_ref(), &running);
                 let previous = st.games.detected.read().clone();
                 if detected != previous {
-                    let window_changed = detected.as_ref().and_then(|d| d.hwnd) != previous.as_ref().and_then(|d| d.hwnd)
+                    let window_changed = detected.as_ref().and_then(|d| d.hwnd)
+                        != previous.as_ref().and_then(|d| d.hwnd)
                         && detected.as_ref().is_some_and(|d| d.hwnd.is_some());
                     if let Some(d) = &detected {
                         if previous.as_ref().map(|p| &p.name) != Some(&d.name) {
@@ -124,12 +137,17 @@ fn start_game_detection(app: AppHandle) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| tray::show_main_window(app)))
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            tray::show_main_window(app)
+        }))
         .plugin(hotkeys::plugin())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--minimized"])))
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            Some(vec!["--minimized"]),
+        ))
         .setup(setup)
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
@@ -145,7 +163,9 @@ pub fn run() {
                             .notification()
                             .builder()
                             .title("ClipLock is still running")
-                            .body("Capture continues in the system tray. Use the tray menu to quit.")
+                            .body(
+                                "Capture continues in the system tray. Use the tray menu to quit.",
+                            )
                             .show();
                     });
                 } else {

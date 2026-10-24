@@ -66,14 +66,20 @@ fn modified_secs(path: &Path) -> u64 {
 
 impl Recorder {
     pub fn engine(&self) -> AppResult<Arc<CaptureEngine>> {
-        self.engine.read().clone().ok_or_else(|| match self.init.read().clone() {
-            Some(InitState::Failed { message }) => AppError::NotReady(message),
-            _ => AppError::NotReady("the recorder is still starting".into()),
-        })
+        self.engine
+            .read()
+            .clone()
+            .ok_or_else(|| match self.init.read().clone() {
+                Some(InitState::Failed { message }) => AppError::NotReady(message),
+                _ => AppError::NotReady("the recorder is still starting".into()),
+            })
     }
 
     pub fn ffmpeg(&self) -> AppResult<Ffmpeg> {
-        self.ffmpeg.read().clone().ok_or_else(|| AppError::NotReady("FFmpeg is not available".into()))
+        self.ffmpeg
+            .read()
+            .clone()
+            .ok_or_else(|| AppError::NotReady("FFmpeg is not available".into()))
     }
 
     pub fn capabilities(&self) -> Option<Capabilities> {
@@ -119,7 +125,9 @@ pub fn initialize(app: AppHandle, force_probe: bool) {
             }
             *st.recorder.init.write() = Some(match result {
                 Ok(()) => InitState::Ready,
-                Err(e) => InitState::Failed { message: e.to_string() },
+                Err(e) => InitState::Failed {
+                    message: e.to_string(),
+                },
             });
             emit_state(&app);
             crate::tray::refresh(&app);
@@ -138,13 +146,19 @@ fn init_inner(app: &AppHandle, force_probe: bool) -> AppResult<()> {
     let cached = std::fs::read(&cache_path)
         .ok()
         .and_then(|b| serde_json::from_slice::<CapabilityCache>(&b).ok())
-        .filter(|c| !force_probe && c.ffmpeg_path == ffmpeg.ffmpeg && c.ffmpeg_modified == modified);
+        .filter(|c| {
+            !force_probe && c.ffmpeg_path == ffmpeg.ffmpeg && c.ffmpeg_modified == modified
+        });
     let caps = match cached {
         Some(c) => c.capabilities,
         None => {
             tracing::info!("probing hardware encoders with {}", ffmpeg.ffmpeg.display());
             let caps = ffmpeg.probe_capabilities()?;
-            let cache = CapabilityCache { ffmpeg_path: ffmpeg.ffmpeg.clone(), ffmpeg_modified: modified, capabilities: caps.clone() };
+            let cache = CapabilityCache {
+                ffmpeg_path: ffmpeg.ffmpeg.clone(),
+                ffmpeg_modified: modified,
+                capabilities: caps.clone(),
+            };
             let _ = std::fs::write(&cache_path, serde_json::to_vec_pretty(&cache)?);
             caps
         }
@@ -154,7 +168,12 @@ fn init_inner(app: &AppHandle, force_probe: bool) -> AppResult<()> {
 
     let settings = st.settings.read().clone();
     let work_dir = settings.buffer_dir(&st.paths.default_buffer_dir);
-    let engine = Arc::new(CaptureEngine::new(ffmpeg, caps, work_dir, settings.capture_config(st.games.foreground_hwnd()))?);
+    let engine = Arc::new(CaptureEngine::new(
+        ffmpeg,
+        caps,
+        work_dir,
+        settings.capture_config(st.games.foreground_hwnd()),
+    )?);
     {
         let app = app.clone();
         engine.set_event_handler(Arc::new(move |event| on_engine_event(&app, event)));
@@ -162,8 +181,18 @@ fn init_inner(app: &AppHandle, force_probe: bool) -> AppResult<()> {
     for recovered in engine.recover_interrupted() {
         match recovered {
             Ok(saved) => {
-                let clip = add_to_library(app, &saved, ClipKind::Recording, "Recovered recording", None)?;
-                notify(app, "Recording recovered", &format!("“{}” was saved after an unexpected shutdown.", clip.title));
+                let clip = add_to_library(
+                    app,
+                    &saved,
+                    ClipKind::Recording,
+                    "Recovered recording",
+                    None,
+                )?;
+                notify(
+                    app,
+                    "Recording recovered",
+                    &format!("“{}” was saved after an unexpected shutdown.", clip.title),
+                );
             }
             Err(e) => tracing::error!("recovery failed: {e}"),
         }
@@ -178,12 +207,27 @@ fn init_inner(app: &AppHandle, force_probe: bool) -> AppResult<()> {
 
 fn on_engine_event(app: &AppHandle, event: EngineEvent) {
     match &event {
-        EngineEvent::RecordingInterrupted { clip: Some(saved), .. } => {
-            if let Ok(clip) = add_to_library(app, saved, ClipKind::Recording, "Interrupted recording", None) {
-                notify(app, "Recording stopped unexpectedly", &format!("What was captured was saved as “{}”.", clip.title));
+        EngineEvent::RecordingInterrupted {
+            clip: Some(saved), ..
+        } => {
+            if let Ok(clip) = add_to_library(
+                app,
+                saved,
+                ClipKind::Recording,
+                "Interrupted recording",
+                None,
+            ) {
+                notify(
+                    app,
+                    "Recording stopped unexpectedly",
+                    &format!("What was captured was saved as “{}”.", clip.title),
+                );
             }
         }
-        EngineEvent::PipelineFailed { error, will_retry: false } => {
+        EngineEvent::PipelineFailed {
+            error,
+            will_retry: false,
+        } => {
             notify(app, "Capture stopped", error);
         }
         _ => {}
@@ -199,7 +243,13 @@ pub fn emit_state(app: &AppHandle) {
 }
 
 fn notify(app: &AppHandle, title: &str, body: &str) {
-    if !app.state::<AppState>().settings.read().general.notifications {
+    if !app
+        .state::<AppState>()
+        .settings
+        .read()
+        .general
+        .notifications
+    {
         return;
     }
     if let Err(e) = app.notification().builder().title(title).body(body).show() {
@@ -279,8 +329,21 @@ pub fn add_to_library(
     let clip = db::insert_clip(&st.db.lock(), &new)?;
     let thumb = st.paths.thumbnails_dir.join(format!("{}.jpg", clip.id));
     let at = (saved.info.duration_secs * 0.3).min(5.0);
-    match st.recorder.ffmpeg().and_then(|f| Ok(cliplock_capture::media::thumbnail(&f, &saved.path, &thumb, at, 480)?)) {
-        Ok(()) => db::update_media(&st.db.lock(), &clip.id, Some(&thumb), saved.info.size_bytes as i64)?,
+    match st.recorder.ffmpeg().and_then(|f| {
+        Ok(cliplock_capture::media::thumbnail(
+            &f,
+            &saved.path,
+            &thumb,
+            at,
+            480,
+        )?)
+    }) {
+        Ok(()) => db::update_media(
+            &st.db.lock(),
+            &clip.id,
+            Some(&thumb),
+            saved.info.size_bytes as i64,
+        )?,
         Err(e) => tracing::warn!("thumbnail for {} failed: {e}", clip.id),
     }
     let clip = db::get_clip(&st.db.lock(), &clip.id)?;
@@ -317,7 +380,12 @@ pub fn stop_replay(app: &AppHandle) -> AppResult<()> {
 }
 
 pub fn toggle_replay(app: &AppHandle) -> AppResult<()> {
-    if app.state::<AppState>().recorder.engine()?.is_replay_active() {
+    if app
+        .state::<AppState>()
+        .recorder
+        .engine()?
+        .is_replay_active()
+    {
         stop_replay(app)
     } else {
         start_replay(app)
@@ -336,14 +404,24 @@ pub fn save_replay(app: &AppHandle, seconds: Option<u32>) -> AppResult<Clip> {
         let (_, game_name) = st.games.current();
         let path = output_path(app, game_name.as_deref())?;
         let saved = engine.save_replay(&path, seconds)?;
-        add_to_library(app, &saved, ClipKind::Replay, &default_title(game_name.as_deref()), None)
+        add_to_library(
+            app,
+            &saved,
+            ClipKind::Replay,
+            &default_title(game_name.as_deref()),
+            None,
+        )
     })();
     st.recorder.saving.store(false, Ordering::SeqCst);
     emit_state(app);
     match &result {
         Ok(clip) => {
             cue(app, Cue::ClipSaved);
-            notify(app, "Clip saved", &format!("{} · {:.0}s", clip.title, clip.duration_ms as f64 / 1000.0));
+            notify(
+                app,
+                "Clip saved",
+                &format!("{} · {:.0}s", clip.title, clip.duration_ms as f64 / 1000.0),
+            );
             let _ = app.emit("clip-saved", clip);
         }
         Err(e) => notify(app, "Could not save clip", &e.to_string()),
@@ -370,7 +448,11 @@ pub fn stop_recording(app: &AppHandle) -> AppResult<Clip> {
     crate::tray::refresh(app);
     let saved = saved?;
     let (_, game_name) = st.games.current();
-    let title = format!("{} recording · {}", game_name.as_deref().unwrap_or("Desktop"), Local::now().format("%b %-d, %H:%M"));
+    let title = format!(
+        "{} recording · {}",
+        game_name.as_deref().unwrap_or("Desktop"),
+        Local::now().format("%b %-d, %H:%M")
+    );
     let clip = add_to_library(app, &saved, ClipKind::Recording, &title, None)?;
     notify(app, "Recording saved", &clip.title);
     let _ = app.emit("clip-saved", &clip);
@@ -378,7 +460,13 @@ pub fn stop_recording(app: &AppHandle) -> AppResult<Clip> {
 }
 
 pub fn toggle_recording(app: &AppHandle) -> AppResult<()> {
-    let recording = app.state::<AppState>().recorder.engine()?.status().recording.is_some();
+    let recording = app
+        .state::<AppState>()
+        .recorder
+        .engine()?
+        .status()
+        .recording
+        .is_some();
     if recording {
         stop_recording(app).map(|_| ())
     } else {
@@ -408,7 +496,9 @@ pub fn toggle_mic_mute(app: &AppHandle) -> AppResult<()> {
 /// Applies changed settings to the running engine.
 pub fn apply_settings(app: &AppHandle, old: &AppSettings, new: &AppSettings) -> AppResult<()> {
     let st = app.state::<AppState>();
-    let Ok(engine) = st.recorder.engine() else { return Ok(()) };
+    let Ok(engine) = st.recorder.engine() else {
+        return Ok(());
+    };
     engine.set_config(new.capture_config(st.games.foreground_hwnd()))?;
     if new.recording.replay_seconds != old.recording.replay_seconds {
         engine.set_replay_seconds(new.recording.replay_seconds);

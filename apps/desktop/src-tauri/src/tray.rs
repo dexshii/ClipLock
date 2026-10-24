@@ -49,7 +49,15 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let quit = MenuItem::with_id(app, "quit", "Quit ClipLock", true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
-        &[&show, &PredefinedMenuItem::separator(app)?, &replay, &save, &record, &PredefinedMenuItem::separator(app)?, &quit],
+        &[
+            &show,
+            &PredefinedMenuItem::separator(app)?,
+            &replay,
+            &save,
+            &record,
+            &PredefinedMenuItem::separator(app)?,
+            &quit,
+        ],
     )?;
     TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon(false))
@@ -70,12 +78,21 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             });
         })
         .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
                 show_main_window(tray.app_handle());
             }
         })
         .build(app)?;
-    app.manage(TrayMenu { replay, save, record });
+    app.manage(TrayMenu {
+        replay,
+        save,
+        record,
+    });
     Ok(())
 }
 
@@ -93,7 +110,13 @@ pub fn refresh(app: &AppHandle) {
             (Some(r), _) if r.paused => "ClipLock — recording paused".to_string(),
             (Some(_), _) => "ClipLock — recording".to_string(),
             (None, true) => {
-                let hotkey = st.settings.read().hotkeys.save_replay.clone().unwrap_or_default();
+                let hotkey = st
+                    .settings
+                    .read()
+                    .hotkeys
+                    .save_replay
+                    .clone()
+                    .unwrap_or_default();
                 format!("ClipLock — Instant Replay on ({hotkey} to save)")
             }
             (None, false) => "ClipLock — idle".to_string(),
@@ -101,8 +124,16 @@ pub fn refresh(app: &AppHandle) {
         let _ = tray.set_tooltip(Some(tooltip));
     }
     if let Some(menu) = app.try_state::<TrayMenu>() {
-        let _ = menu.replay.set_text(if replay_on { "Turn off Instant Replay" } else { "Turn on Instant Replay" });
+        let _ = menu.replay.set_text(if replay_on {
+            "Turn off Instant Replay"
+        } else {
+            "Turn on Instant Replay"
+        });
         let _ = menu.save.set_enabled(replay_on);
-        let _ = menu.record.set_text(if recording.is_some() { "Stop recording" } else { "Start recording" });
+        let _ = menu.record.set_text(if recording.is_some() {
+            "Stop recording"
+        } else {
+            "Start recording"
+        });
     }
 }

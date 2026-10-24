@@ -59,7 +59,13 @@ impl Ffmpeg {
 
     pub fn version(&self) -> Result<String> {
         let out = run_with_timeout(self.command().arg("-version"), Duration::from_secs(10))?;
-        Ok(out.stdout.lines().next().unwrap_or_default().trim().to_string())
+        Ok(out
+            .stdout
+            .lines()
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_string())
     }
 
     /// Queries the FFmpeg build and test-encodes a few frames with every candidate
@@ -67,21 +73,30 @@ impl Ffmpeg {
     /// encode tells us whether the GPU and driver actually support it.
     pub fn probe_capabilities(&self) -> Result<Capabilities> {
         let version = self.version()?;
-        let encoders_out = run_with_timeout(self.command().arg("-encoders"), Duration::from_secs(10))?;
+        let encoders_out =
+            run_with_timeout(self.command().arg("-encoders"), Duration::from_secs(10))?;
         let compiled: BTreeSet<String> = parse_name_list(&encoders_out.stdout);
-        let filters_out = run_with_timeout(self.command().arg("-filters"), Duration::from_secs(10))?;
+        let filters_out =
+            run_with_timeout(self.command().arg("-filters"), Duration::from_secs(10))?;
         let filters: BTreeSet<String> = parse_name_list(&filters_out.stdout);
 
         let mut encoders = Vec::new();
         for codec in [Codec::H264, Codec::Hevc, Codec::Av1] {
             for kind in ENCODER_PREFERENCE {
-                let Some(name) = encoder_name(kind, codec) else { continue };
+                let Some(name) = encoder_name(kind, codec) else {
+                    continue;
+                };
                 if !compiled.contains(name) {
                     continue;
                 }
                 let (works, hardware) = self.test_encode(kind, name);
                 if works {
-                    encoders.push(EncoderInfo { kind, codec, ffmpeg_name: name.to_string(), hardware });
+                    encoders.push(EncoderInfo {
+                        kind,
+                        codec,
+                        ffmpeg_name: name.to_string(),
+                        hardware,
+                    });
                 }
             }
         }
@@ -97,7 +112,11 @@ impl Ffmpeg {
     }
 
     fn test_encode(&self, kind: EncoderKind, name: &str) -> (bool, bool) {
-        let pix_fmt = if kind == EncoderKind::OpenH264 { "yuv420p" } else { "nv12" };
+        let pix_fmt = if kind == EncoderKind::OpenH264 {
+            "yuv420p"
+        } else {
+            "nv12"
+        };
         let attempt = |extra: &[&str]| -> bool {
             let mut cmd = self.command();
             cmd.args(["-nostdin", "-loglevel", "error", "-f", "lavfi", "-i"])
@@ -160,7 +179,9 @@ fn parse_name_list(text: &str) -> BTreeSet<String> {
             continue;
         }
         let mut parts = trimmed.split_whitespace();
-        let (Some(_flags), Some(name)) = (parts.next(), parts.next()) else { continue };
+        let (Some(_flags), Some(name)) = (parts.next(), parts.next()) else {
+            continue;
+        };
         names.insert(name.to_string());
     }
     names
@@ -235,12 +256,25 @@ impl Capabilities {
 
     /// Encoders to fall back to (in order) when `failed` cannot start.
     pub fn fallbacks_after(&self, failed: &EncoderInfo) -> Vec<EncoderInfo> {
-        let codec_encoders: Vec<_> = self.encoders.iter().filter(|e| e.codec == failed.codec).collect();
-        let pos = codec_encoders.iter().position(|e| *e == failed).map_or(0, |p| p + 1);
-        let mut out: Vec<EncoderInfo> = codec_encoders[pos..].iter().map(|e| (*e).clone()).collect();
+        let codec_encoders: Vec<_> = self
+            .encoders
+            .iter()
+            .filter(|e| e.codec == failed.codec)
+            .collect();
+        let pos = codec_encoders
+            .iter()
+            .position(|e| *e == failed)
+            .map_or(0, |p| p + 1);
+        let mut out: Vec<EncoderInfo> =
+            codec_encoders[pos..].iter().map(|e| (*e).clone()).collect();
         // H.264 software encoding is the universal last resort for other codecs.
         if failed.codec != Codec::H264 {
-            out.extend(self.encoders.iter().filter(|e| e.codec == Codec::H264 && !e.hardware).cloned());
+            out.extend(
+                self.encoders
+                    .iter()
+                    .filter(|e| e.codec == Codec::H264 && !e.hardware)
+                    .cloned(),
+            );
         }
         out
     }
@@ -264,7 +298,11 @@ pub struct CommandOutput {
 
 /// Runs a command to completion, killing it after `timeout`.
 pub fn run_with_timeout(cmd: &mut Command, timeout: Duration) -> Result<CommandOutput> {
-    let mut child = cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+    let mut child = cmd
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
     let mut stdout = child.stdout.take().expect("piped");
     let mut stderr = child.stderr.take().expect("piped");
     let out_thread = std::thread::spawn(move || {
@@ -292,7 +330,11 @@ pub fn run_with_timeout(cmd: &mut Command, timeout: Duration) -> Result<CommandO
     let stdout = out_thread.join().unwrap_or_default();
     let stderr = err_thread.join().unwrap_or_default();
     match status {
-        Some(status) => Ok(CommandOutput { success: status.success(), stdout, stderr }),
+        Some(status) => Ok(CommandOutput {
+            success: status.success(),
+            stdout,
+            stderr,
+        }),
         None => Err(CaptureError::Timeout),
     }
 }
@@ -320,7 +362,12 @@ mod tests {
     }
 
     fn info(kind: EncoderKind, codec: Codec, hw: bool) -> EncoderInfo {
-        EncoderInfo { kind, codec, ffmpeg_name: encoder_name(kind, codec).unwrap().into(), hardware: hw }
+        EncoderInfo {
+            kind,
+            codec,
+            ffmpeg_name: encoder_name(kind, codec).unwrap().into(),
+            hardware: hw,
+        }
     }
 
     #[test]
@@ -337,13 +384,17 @@ mod tests {
             has_scale_d3d11: false,
             has_aac: true,
         };
-        let best = caps.resolve_encoder(EncoderKind::Auto, Codec::H264).unwrap();
+        let best = caps
+            .resolve_encoder(EncoderKind::Auto, Codec::H264)
+            .unwrap();
         assert_eq!(best.kind, EncoderKind::Nvenc);
         let fb = caps.fallbacks_after(&best);
         assert_eq!(fb.len(), 1);
         assert_eq!(fb[0].kind, EncoderKind::Software);
         assert!(caps.resolve_encoder(EncoderKind::Amf, Codec::H264).is_err());
-        let hevc = caps.resolve_encoder(EncoderKind::Auto, Codec::Hevc).unwrap();
+        let hevc = caps
+            .resolve_encoder(EncoderKind::Auto, Codec::Hevc)
+            .unwrap();
         let fb = caps.fallbacks_after(&hevc);
         assert_eq!(fb.last().unwrap().ffmpeg_name, "libx264");
         assert!(caps.resolve_encoder(EncoderKind::Auto, Codec::Av1).is_err());

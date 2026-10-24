@@ -68,7 +68,12 @@ pub struct RecordingSettings {
 
 impl Default for RecordingSettings {
     fn default() -> Self {
-        Self { replay_enabled: false, replay_seconds: 30, capture_target: CaptureTarget::Display, monitor_index: 0 }
+        Self {
+            replay_enabled: false,
+            replay_seconds: 30,
+            capture_target: CaptureTarget::Display,
+            monitor_index: 0,
+        }
     }
 }
 
@@ -160,7 +165,11 @@ impl HotkeySettings {
             (HotkeyAction::ToggleMicMute, &self.toggle_mic_mute),
         ]
         .into_iter()
-        .filter_map(|(a, k)| k.as_deref().filter(|k| !k.trim().is_empty()).map(|k| (a, k)))
+        .filter_map(|(a, k)| {
+            k.as_deref()
+                .filter(|k| !k.trim().is_empty())
+                .map(|k| (a, k))
+        })
         .collect()
     }
 }
@@ -188,7 +197,11 @@ pub struct StorageSettings {
 
 impl Default for StorageSettings {
     fn default() -> Self {
-        Self { clips_dir: None, buffer_dir: None, library_warning_gb: 50 }
+        Self {
+            clips_dir: None,
+            buffer_dir: None,
+            library_warning_gb: 50,
+        }
     }
 }
 
@@ -204,7 +217,11 @@ pub struct UploadSettings {
 
 impl Default for UploadSettings {
     fn default() -> Self {
-        Self { server_url: String::new(), default_visibility: "unlisted".into(), allow_download: true }
+        Self {
+            server_url: String::new(),
+            default_visibility: "unlisted".into(),
+            allow_download: true,
+        }
     }
 }
 
@@ -217,7 +234,9 @@ pub struct PrivacySettings {
 
 impl Default for PrivacySettings {
     fn default() -> Self {
-        Self { announce_capture: true }
+        Self {
+            announce_capture: true,
+        }
     }
 }
 
@@ -243,20 +262,33 @@ impl AppSettings {
         let invalid = |m: String| Err(AppError::Invalid(m));
         let r = &self.recording;
         if !(5..=1200).contains(&r.replay_seconds) {
-            return invalid(format!("replay length must be 5–1200 seconds (got {})", r.replay_seconds));
+            return invalid(format!(
+                "replay length must be 5–1200 seconds (got {})",
+                r.replay_seconds
+            ));
         }
         if !self.uploads.server_url.is_empty() {
             let url = url::Url::parse(&self.uploads.server_url)
                 .map_err(|_| AppError::Invalid("server URL is not a valid URL".into()))?;
-            let local = matches!(url.host_str(), Some("localhost") | Some("127.0.0.1") | Some("::1"));
+            let local = matches!(
+                url.host_str(),
+                Some("localhost") | Some("127.0.0.1") | Some("::1")
+            );
             if url.scheme() != "https" && !(url.scheme() == "http" && local) {
-                return invalid("server URL must use https:// (http:// is only allowed for localhost)".into());
+                return invalid(
+                    "server URL must use https:// (http:// is only allowed for localhost)".into(),
+                );
             }
         }
         if !["private", "unlisted", "public"].contains(&self.uploads.default_visibility.as_str()) {
             return invalid("unknown default visibility".into());
         }
-        let keys: Vec<String> = self.hotkeys.entries().iter().map(|(_, k)| k.to_ascii_lowercase().replace(' ', "")).collect();
+        let keys: Vec<String> = self
+            .hotkeys
+            .entries()
+            .iter()
+            .map(|(_, k)| k.to_ascii_lowercase().replace(' ', ""))
+            .collect();
         for (i, k) in keys.iter().enumerate() {
             if keys[..i].contains(k) {
                 return invalid(format!("hotkey {k} is assigned twice"));
@@ -267,11 +299,17 @@ impl AppSettings {
     }
 
     pub fn clips_dir(&self, default: &Path) -> PathBuf {
-        self.storage.clips_dir.clone().unwrap_or_else(|| default.to_path_buf())
+        self.storage
+            .clips_dir
+            .clone()
+            .unwrap_or_else(|| default.to_path_buf())
     }
 
     pub fn buffer_dir(&self, default: &Path) -> PathBuf {
-        self.storage.buffer_dir.clone().unwrap_or_else(|| default.to_path_buf())
+        self.storage
+            .buffer_dir
+            .clone()
+            .unwrap_or_else(|| default.to_path_buf())
     }
 
     /// Engine configuration for the current settings. `game_hwnd` is the detected game
@@ -279,7 +317,9 @@ impl AppSettings {
     pub fn capture_config(&self, game_hwnd: Option<u64>) -> CaptureConfig {
         let source = match (self.recording.capture_target, game_hwnd) {
             (CaptureTarget::GameWindow, Some(hwnd)) => VideoSource::Window { hwnd },
-            _ => VideoSource::Monitor { index: self.recording.monitor_index },
+            _ => VideoSource::Monitor {
+                index: self.recording.monitor_index,
+            },
         };
         let v = &self.video;
         let a = &self.audio;
@@ -299,7 +339,11 @@ impl AppSettings {
                     device_id: a.system_device_id.clone(),
                     volume: a.system_volume,
                 },
-                microphone: AudioInputConfig { enabled: a.mic_enabled, device_id: a.mic_device_id.clone(), volume: a.mic_volume },
+                microphone: AudioInputConfig {
+                    enabled: a.mic_enabled,
+                    device_id: a.mic_device_id.clone(),
+                    volume: a.mic_volume,
+                },
                 separate_tracks: a.separate_tracks,
                 bitrate_kbps: a.bitrate_kbps,
                 synthetic: std::env::var_os("CLIPLOCK_SYNTHETIC_AUDIO").is_some(),
@@ -318,7 +362,10 @@ impl AppSettings {
                 Ok(bytes) => match serde_json::from_slice::<AppSettings>(&bytes) {
                     Ok(s) if s.validate().is_ok() => return s,
                     Ok(_) | Err(_) => {
-                        tracing::warn!("settings file {} is invalid; ignoring it", candidate.display());
+                        tracing::warn!(
+                            "settings file {} is invalid; ignoring it",
+                            candidate.display()
+                        );
                         let _ = std::fs::rename(candidate, candidate.with_extension("corrupt"));
                     }
                 },
@@ -365,7 +412,11 @@ mod tests {
         s.save(dir.path()).unwrap();
         assert_eq!(AppSettings::load(dir.path()), s);
 
-        std::fs::write(dir.path().join(SETTINGS_FILE), r#"{"recording":{"replaySeconds":120},"futureField":1}"#).unwrap();
+        std::fs::write(
+            dir.path().join(SETTINGS_FILE),
+            r#"{"recording":{"replaySeconds":120},"futureField":1}"#,
+        )
+        .unwrap();
         let loaded = AppSettings::load(dir.path());
         assert_eq!(loaded.recording.replay_seconds, 120);
         assert_eq!(loaded.video, VideoSettings::default());
@@ -399,7 +450,13 @@ mod tests {
     fn game_window_target_uses_hwnd_when_available() {
         let mut s = AppSettings::default();
         s.recording.capture_target = CaptureTarget::GameWindow;
-        assert_eq!(s.capture_config(Some(42)).video.source, VideoSource::Window { hwnd: 42 });
-        assert_eq!(s.capture_config(None).video.source, VideoSource::Monitor { index: 0 });
+        assert_eq!(
+            s.capture_config(Some(42)).video.source,
+            VideoSource::Window { hwnd: 42 }
+        );
+        assert_eq!(
+            s.capture_config(None).video.source,
+            VideoSource::Monitor { index: 0 }
+        );
     }
 }

@@ -59,12 +59,28 @@ impl AudioRuntime {
         }
         let mut sources = Vec::new();
         if cfg.system.enabled {
-            let input = open_input(AudioDeviceKind::Output, cfg.system.device_id.as_deref(), cfg.synthetic)?;
-            sources.push(Source { kind: AudioDeviceKind::Output, input, failed: false });
+            let input = open_input(
+                AudioDeviceKind::Output,
+                cfg.system.device_id.as_deref(),
+                cfg.synthetic,
+            )?;
+            sources.push(Source {
+                kind: AudioDeviceKind::Output,
+                input,
+                failed: false,
+            });
         }
         if cfg.microphone.enabled {
-            let input = open_input(AudioDeviceKind::Input, cfg.microphone.device_id.as_deref(), cfg.synthetic)?;
-            sources.push(Source { kind: AudioDeviceKind::Input, input, failed: false });
+            let input = open_input(
+                AudioDeviceKind::Input,
+                cfg.microphone.device_id.as_deref(),
+                cfg.synthetic,
+            )?;
+            sources.push(Source {
+                kind: AudioDeviceKind::Input,
+                input,
+                failed: false,
+            });
         }
 
         let mut kinds = vec![TrackKind::Mixed];
@@ -96,7 +112,12 @@ impl AudioRuntime {
                     }
                 })?
         };
-        Ok(Some(Self { tracks, stop, thread: Some(thread), error }))
+        Ok(Some(Self {
+            tracks,
+            stop,
+            thread: Some(thread),
+            error,
+        }))
     }
 
     /// A device or mixer error, if one occurred. Device failures do not stop the
@@ -153,7 +174,9 @@ fn mix_loop(
             return Ok(());
         }
         if Instant::now() > accept_deadline {
-            return Err(CaptureError::Audio("encoder never connected to the audio stream".into()));
+            return Err(CaptureError::Audio(
+                "encoder never connected to the audio stream".into(),
+            ));
         }
         outputs[0].2 = try_accept(&outputs[0].1)?;
         std::thread::sleep(Duration::from_millis(5));
@@ -197,7 +220,11 @@ fn mix_loop(
         }
 
         let sys_gain = controls.system_volume();
-        let mic_gain = if controls.mic_muted() { 0.0 } else { controls.mic_volume() };
+        let mic_gain = if controls.mic_muted() {
+            0.0
+        } else {
+            controls.mic_volume()
+        };
         mixed.clear();
         mixed.resize(samples, 0.0);
         for (source, buf) in sources.iter().zip(scratch.iter()) {
@@ -214,14 +241,24 @@ fn mix_loop(
             if stream.is_none() {
                 *stream = try_accept(listener)?;
                 if stream.is_none() && Instant::now() > accept_deadline {
-                    return Err(CaptureError::Audio("encoder never connected to an audio track".into()));
+                    return Err(CaptureError::Audio(
+                        "encoder never connected to an audio track".into(),
+                    ));
                 }
             }
-            let Some(stream) = stream.as_mut() else { continue };
+            let Some(stream) = stream.as_mut() else {
+                continue;
+            };
             let (data, gain): (&[f32], f32) = match kind {
                 TrackKind::Mixed => (&mixed, 1.0),
-                TrackKind::System => (track_of(&sources, &scratch, AudioDeviceKind::Output), sys_gain),
-                TrackKind::Microphone => (track_of(&sources, &scratch, AudioDeviceKind::Input), mic_gain),
+                TrackKind::System => (
+                    track_of(&sources, &scratch, AudioDeviceKind::Output),
+                    sys_gain,
+                ),
+                TrackKind::Microphone => (
+                    track_of(&sources, &scratch, AudioDeviceKind::Input),
+                    mic_gain,
+                ),
             };
             bytes.clear();
             bytes.reserve(data.len() * 4);

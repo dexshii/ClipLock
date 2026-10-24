@@ -35,7 +35,10 @@ pub struct SampleQueue {
 impl SampleQueue {
     pub fn new(max_seconds: f32) -> Arc<Self> {
         let max_samples = (max_seconds * SAMPLE_RATE as f32) as usize * CHANNELS;
-        Arc::new(Self { samples: Mutex::new(VecDeque::with_capacity(max_samples)), max_samples })
+        Arc::new(Self {
+            samples: Mutex::new(VecDeque::with_capacity(max_samples)),
+            max_samples,
+        })
     }
 
     pub fn push(&self, interleaved: &[f32]) {
@@ -103,10 +106,12 @@ impl AudioControls {
         self.mic_muted.load(Ordering::Relaxed)
     }
     pub fn set_system_volume(&self, v: f32) {
-        self.system_volume.store(v.clamp(0.0, 2.0).to_bits(), Ordering::Relaxed);
+        self.system_volume
+            .store(v.clamp(0.0, 2.0).to_bits(), Ordering::Relaxed);
     }
     pub fn set_mic_volume(&self, v: f32) {
-        self.mic_volume.store(v.clamp(0.0, 2.0).to_bits(), Ordering::Relaxed);
+        self.mic_volume
+            .store(v.clamp(0.0, 2.0).to_bits(), Ordering::Relaxed);
     }
     pub fn set_mic_muted(&self, muted: bool) {
         self.mic_muted.store(muted, Ordering::Relaxed);
@@ -160,12 +165,19 @@ pub(crate) fn open_input(
     synthetic: bool,
 ) -> crate::error::Result<Box<dyn InputStream>> {
     if synthetic {
-        let freq = if kind == AudioDeviceKind::Output { 440.0 } else { 660.0 };
+        let freq = if kind == AudioDeviceKind::Output {
+            440.0
+        } else {
+            660.0
+        };
         return Ok(Box::new(synthetic::SineInput::start(freq)));
     }
     #[cfg(windows)]
     {
-        Ok(Box::new(wasapi_source::WasapiInput::start(kind, device_id.map(str::to_owned))?))
+        Ok(Box::new(wasapi_source::WasapiInput::start(
+            kind,
+            device_id.map(str::to_owned),
+        )?))
     }
     #[cfg(not(windows))]
     {

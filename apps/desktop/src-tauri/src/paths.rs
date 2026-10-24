@@ -25,7 +25,9 @@ impl AppPaths {
         let log_dir = p.app_log_dir()?;
         let videos = p.video_dir().or_else(|_| p.home_dir())?;
         let resource_dir = p.resource_dir()?;
-        let exe_dir = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf));
+        let exe_dir = std::env::current_exe()
+            .ok()
+            .and_then(|e| e.parent().map(Path::to_path_buf));
         let mut ffmpeg_dirs: Vec<PathBuf> = exe_dir.into_iter().collect();
         ffmpeg_dirs.push(resource_dir.clone());
         // `tauri dev` runs from target/debug; sidecars live in src-tauri/binaries.
@@ -40,7 +42,12 @@ impl AppPaths {
             resource_dir,
             ffmpeg_dirs,
         };
-        for dir in [&paths.config_dir, &paths.data_dir, &paths.log_dir, &paths.thumbnails_dir] {
+        for dir in [
+            &paths.config_dir,
+            &paths.data_dir,
+            &paths.log_dir,
+            &paths.thumbnails_dir,
+        ] {
             std::fs::create_dir_all(dir)?;
         }
         Ok(paths)
@@ -51,6 +58,8 @@ impl AppPaths {
         if bundled.exists() {
             return bundled;
         }
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources").join(rel)
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join(rel)
     }
 }

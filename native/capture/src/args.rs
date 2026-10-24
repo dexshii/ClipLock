@@ -32,7 +32,11 @@ fn test_pattern_size(height: Option<u32>) -> (u32, u32) {
 
 /// Whether the source yields D3D11 GPU frames (Windows capture filters).
 pub fn is_d3d11_source(source: &VideoSource) -> bool {
-    cfg!(windows) && matches!(source, VideoSource::Monitor { .. } | VideoSource::Window { .. })
+    cfg!(windows)
+        && matches!(
+            source,
+            VideoSource::Monitor { .. } | VideoSource::Window { .. }
+        )
 }
 
 pub fn video_input(config: &CaptureConfig, caps: &Capabilities) -> Vec<String> {
@@ -85,9 +89,15 @@ pub fn video_input(config: &CaptureConfig, caps: &Capabilities) -> Vec<String> {
 pub fn video_filter(plan: &SessionPlan) -> Option<String> {
     let v = &plan.config.video;
     let kind = plan.encoder.kind;
-    let sw_format = if kind == EncoderKind::OpenH264 { "yuv420p" } else { "nv12" };
+    let sw_format = if kind == EncoderKind::OpenH264 {
+        "yuv420p"
+    } else {
+        "nv12"
+    };
     // Never upscale: the output is at most the source height.
-    let height = v.output_height.map_or_else(|| "ih".to_string(), |h| format!("min({h}\\,ih)"));
+    let height = v
+        .output_height
+        .map_or_else(|| "ih".to_string(), |h| format!("min({h}\\,ih)"));
     let mut chain: Vec<String> = Vec::new();
 
     if !is_d3d11_source(&v.source) {
@@ -95,7 +105,11 @@ pub fn video_filter(plan: &SessionPlan) -> Option<String> {
             chain.push(format!("scale=-2:{height}"));
         }
         // Software encoders get yuv420p for maximum player compatibility.
-        let fmt = if plan.encoder.hardware { sw_format } else { "yuv420p" };
+        let fmt = if plan.encoder.hardware {
+            sw_format
+        } else {
+            "yuv420p"
+        };
         chain.push(format!("format={fmt}"));
         return Some(chain.join(","));
     }
@@ -105,7 +119,10 @@ pub fn video_filter(plan: &SessionPlan) -> Option<String> {
         chain.push(format!("fps={}", v.fps));
     }
 
-    let gpu_encoder = matches!(kind, EncoderKind::Nvenc | EncoderKind::Amf | EncoderKind::Qsv);
+    let gpu_encoder = matches!(
+        kind,
+        EncoderKind::Nvenc | EncoderKind::Amf | EncoderKind::Qsv
+    );
     if plan.gpu_path && gpu_encoder && plan.caps.has_scale_d3d11 {
         // Scale and convert BGRA → NV12 on the GPU with the D3D11 video processor.
         chain.push(format!("scale_d3d11=width=-2:height={height}:format=nv12"));
@@ -125,7 +142,11 @@ pub fn video_filter(plan: &SessionPlan) -> Option<String> {
         if v.output_height.is_some() {
             chain.push(format!("scale=-2:{height}:flags=bilinear"));
         }
-        let fmt = if plan.encoder.hardware { sw_format } else { "yuv420p" };
+        let fmt = if plan.encoder.hardware {
+            sw_format
+        } else {
+            "yuv420p"
+        };
         chain.push(format!("format={fmt}"));
     }
     if chain.is_empty() {
@@ -153,26 +174,65 @@ pub fn encoder_args(plan: &SessionPlan) -> Vec<String> {
     ];
     match enc.kind {
         EncoderKind::Nvenc => {
-            push(&mut a, ["-preset", "p4", "-tune", "hq", "-rc", "vbr", "-forced-idr", "1"]);
+            push(
+                &mut a,
+                [
+                    "-preset",
+                    "p4",
+                    "-tune",
+                    "hq",
+                    "-rc",
+                    "vbr",
+                    "-forced-idr",
+                    "1",
+                ],
+            );
             push(&mut a, rate);
         }
         EncoderKind::Amf => {
-            push(&mut a, ["-usage", "transcoding", "-quality", "balanced", "-rc", "vbr_peak"]);
+            push(
+                &mut a,
+                [
+                    "-usage",
+                    "transcoding",
+                    "-quality",
+                    "balanced",
+                    "-rc",
+                    "vbr_peak",
+                ],
+            );
             push(&mut a, rate);
         }
         EncoderKind::Qsv => {
-            push(&mut a, ["-preset", "veryfast", "-look_ahead", "0", "-forced_idr", "1"]);
+            push(
+                &mut a,
+                [
+                    "-preset",
+                    "veryfast",
+                    "-look_ahead",
+                    "0",
+                    "-forced_idr",
+                    "1",
+                ],
+            );
             push(&mut a, rate);
         }
         EncoderKind::MediaFoundation => {
-            push(&mut a, ["-rate_control", "u_vbr", "-scenario", "camera_record"]);
+            push(
+                &mut a,
+                ["-rate_control", "u_vbr", "-scenario", "camera_record"],
+            );
             if enc.hardware {
                 push(&mut a, ["-hw_encoding", "1"]);
             }
             push(&mut a, ["-b:v".to_string(), format!("{b}k")]);
         }
         EncoderKind::Software => {
-            let preset = if enc.ffmpeg_name == "libsvtav1" { "10" } else { "veryfast" };
+            let preset = if enc.ffmpeg_name == "libsvtav1" {
+                "10"
+            } else {
+                "veryfast"
+            };
             push(&mut a, ["-preset", preset]);
             push(&mut a, rate);
         }
@@ -180,12 +240,18 @@ pub fn encoder_args(plan: &SessionPlan) -> Vec<String> {
             push(&mut a, ["-b:v".to_string(), format!("{b}k")]);
         }
     }
-    push(&mut a, ["-bf".to_string(), "0".into(), "-g".into(), gop.to_string()]);
+    push(
+        &mut a,
+        ["-bf".to_string(), "0".into(), "-g".into(), gop.to_string()],
+    );
     push(
         &mut a,
         [
             "-force_key_frames".to_string(),
-            format!("expr:gte(t,n_forced*{})", plan.config.keyframe_interval_secs),
+            format!(
+                "expr:gte(t,n_forced*{})",
+                plan.config.keyframe_interval_secs
+            ),
         ],
     );
     a
@@ -194,7 +260,19 @@ pub fn encoder_args(plan: &SessionPlan) -> Vec<String> {
 pub fn build_args(plan: &SessionPlan) -> Vec<String> {
     let cfg = plan.config;
     let mut args: Vec<String> = Vec::new();
-    push(&mut args, ["-y", "-loglevel", "warning", "-nostats", "-progress", "pipe:1", "-stats_period", "0.5"]);
+    push(
+        &mut args,
+        [
+            "-y",
+            "-loglevel",
+            "warning",
+            "-nostats",
+            "-progress",
+            "pipe:1",
+            "-stats_period",
+            "0.5",
+        ],
+    );
 
     args.extend(video_input(cfg, plan.caps));
     for (_, port) in plan.audio_tracks {
@@ -224,9 +302,23 @@ pub fn build_args(plan: &SessionPlan) -> Vec<String> {
     }
     args.extend(encoder_args(plan));
     if !plan.audio_tracks.is_empty() {
-        push(&mut args, ["-c:a".to_string(), "aac".into(), "-b:a".into(), format!("{}k", cfg.audio.bitrate_kbps)]);
+        push(
+            &mut args,
+            [
+                "-c:a".to_string(),
+                "aac".into(),
+                "-b:a".into(),
+                format!("{}k", cfg.audio.bitrate_kbps),
+            ],
+        );
         for (i, (kind, _)) in plan.audio_tracks.iter().enumerate() {
-            push(&mut args, [format!("-metadata:s:a:{i}"), format!("title={}", kind.title())]);
+            push(
+                &mut args,
+                [
+                    format!("-metadata:s:a:{i}"),
+                    format!("title={}", kind.title()),
+                ],
+            );
         }
     }
 
@@ -240,14 +332,19 @@ pub fn build_args(plan: &SessionPlan) -> Vec<String> {
             "-segment_time".into(),
             cfg.segment_secs.to_string(),
             "-segment_list".into(),
-            plan.session_dir.join(SEGMENT_LIST).to_string_lossy().into_owned(),
+            plan.session_dir
+                .join(SEGMENT_LIST)
+                .to_string_lossy()
+                .into_owned(),
             "-segment_list_type".into(),
             "csv".into(),
             "-segment_list_flags".into(),
             "+live".into(),
             "-reset_timestamps".into(),
             "1".into(),
-            segment_pattern(plan.session_dir).to_string_lossy().into_owned(),
+            segment_pattern(plan.session_dir)
+                .to_string_lossy()
+                .into_owned(),
         ],
     );
     args
@@ -271,7 +368,12 @@ mod tests {
     }
 
     fn enc(kind: EncoderKind, name: &str, hardware: bool) -> EncoderInfo {
-        EncoderInfo { kind, codec: Codec::H264, ffmpeg_name: name.into(), hardware }
+        EncoderInfo {
+            kind,
+            codec: Codec::H264,
+            ffmpeg_name: name.into(),
+            hardware,
+        }
     }
 
     #[test]
@@ -281,8 +383,18 @@ mod tests {
         let caps = caps(true);
         let e = enc(EncoderKind::Nvenc, "h264_nvenc", true);
         let dir = PathBuf::from("buf");
-        let plan = SessionPlan { config: &config, caps: &caps, encoder: &e, gpu_path: true, session_dir: &dir, audio_tracks: &[] };
-        assert_eq!(video_filter(&plan).unwrap(), "scale_d3d11=width=-2:height=min(1080\\,ih):format=nv12");
+        let plan = SessionPlan {
+            config: &config,
+            caps: &caps,
+            encoder: &e,
+            gpu_path: true,
+            session_dir: &dir,
+            audio_tracks: &[],
+        };
+        assert_eq!(
+            video_filter(&plan).unwrap(),
+            "scale_d3d11=width=-2:height=min(1080\\,ih):format=nv12"
+        );
         let args = build_args(&plan);
         let joined = args.join(" ");
         assert!(joined.contains("ddagrab=output_idx=0:framerate=60:draw_mouse=0"));
@@ -300,10 +412,27 @@ mod tests {
         let caps = caps(false);
         let e = enc(EncoderKind::Nvenc, "h264_nvenc", true);
         let dir = PathBuf::from("buf");
-        let plan = SessionPlan { config: &config, caps: &caps, encoder: &e, gpu_path: true, session_dir: &dir, audio_tracks: &[] };
-        assert_eq!(video_filter(&plan).unwrap(), "hwdownload,format=bgra,scale=-2:min(720\\,ih):flags=bilinear,format=nv12");
+        let plan = SessionPlan {
+            config: &config,
+            caps: &caps,
+            encoder: &e,
+            gpu_path: true,
+            session_dir: &dir,
+            audio_tracks: &[],
+        };
+        assert_eq!(
+            video_filter(&plan).unwrap(),
+            "hwdownload,format=bgra,scale=-2:min(720\\,ih):flags=bilinear,format=nv12"
+        );
         config.video.output_height = None;
-        let plan = SessionPlan { config: &config, caps: &caps, encoder: &e, gpu_path: true, session_dir: &dir, audio_tracks: &[] };
+        let plan = SessionPlan {
+            config: &config,
+            caps: &caps,
+            encoder: &e,
+            gpu_path: true,
+            session_dir: &dir,
+            audio_tracks: &[],
+        };
         assert_eq!(video_filter(&plan), None, "native size NVENC is zero-copy");
     }
 
@@ -314,8 +443,19 @@ mod tests {
         let caps = caps(false);
         let e = enc(EncoderKind::Software, "libx264", false);
         let dir = PathBuf::from("buf");
-        let tracks = [(TrackKind::Mixed, 4000), (TrackKind::System, 4001), (TrackKind::Microphone, 4002)];
-        let plan = SessionPlan { config: &config, caps: &caps, encoder: &e, gpu_path: false, session_dir: &dir, audio_tracks: &tracks };
+        let tracks = [
+            (TrackKind::Mixed, 4000),
+            (TrackKind::System, 4001),
+            (TrackKind::Microphone, 4002),
+        ];
+        let plan = SessionPlan {
+            config: &config,
+            caps: &caps,
+            encoder: &e,
+            gpu_path: false,
+            session_dir: &dir,
+            audio_tracks: &tracks,
+        };
         let joined = build_args(&plan).join(" ");
         assert!(joined.contains("-re -f lavfi -i testsrc2=size=1920x1080:rate=60"));
         assert!(joined.contains("-i tcp://127.0.0.1:4002"));

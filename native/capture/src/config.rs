@@ -105,8 +105,16 @@ pub struct AudioConfig {
 impl Default for AudioConfig {
     fn default() -> Self {
         Self {
-            system: AudioInputConfig { enabled: true, device_id: None, volume: 1.0 },
-            microphone: AudioInputConfig { enabled: false, device_id: None, volume: 1.0 },
+            system: AudioInputConfig {
+                enabled: true,
+                device_id: None,
+                volume: 1.0,
+            },
+            microphone: AudioInputConfig {
+                enabled: false,
+                device_id: None,
+                volume: 1.0,
+            },
             separate_tracks: false,
             bitrate_kbps: 160,
             synthetic: false,
@@ -147,14 +155,22 @@ impl CaptureConfig {
     pub fn validate(&self) -> Result<()> {
         let v = &self.video;
         if !(1..=240).contains(&v.fps) {
-            return Err(CaptureError::InvalidConfig(format!("fps {} out of range", v.fps)));
+            return Err(CaptureError::InvalidConfig(format!(
+                "fps {} out of range",
+                v.fps
+            )));
         }
         if !(500..=200_000).contains(&v.bitrate_kbps) {
-            return Err(CaptureError::InvalidConfig(format!("bitrate {} kbps out of range", v.bitrate_kbps)));
+            return Err(CaptureError::InvalidConfig(format!(
+                "bitrate {} kbps out of range",
+                v.bitrate_kbps
+            )));
         }
         if let Some(h) = v.output_height {
             if !(144..=4320).contains(&h) || h % 2 != 0 {
-                return Err(CaptureError::InvalidConfig(format!("output height {h} is invalid")));
+                return Err(CaptureError::InvalidConfig(format!(
+                    "output height {h} is invalid"
+                )));
             }
         }
         if self.keyframe_interval_secs == 0 || self.segment_secs < self.keyframe_interval_secs {
@@ -162,9 +178,14 @@ impl CaptureConfig {
                 "segment length must be at least one keyframe interval".into(),
             ));
         }
-        for (name, input) in [("system", &self.audio.system), ("microphone", &self.audio.microphone)] {
+        for (name, input) in [
+            ("system", &self.audio.system),
+            ("microphone", &self.audio.microphone),
+        ] {
             if !(0.0..=2.0).contains(&input.volume) || input.volume.is_nan() {
-                return Err(CaptureError::InvalidConfig(format!("{name} volume out of range")));
+                return Err(CaptureError::InvalidConfig(format!(
+                    "{name} volume out of range"
+                )));
             }
         }
         Ok(())
@@ -190,7 +211,10 @@ mod tests {
         let mut c = CaptureConfig::default();
         c.video.output_height = Some(1081);
         assert!(c.validate().is_err());
-        let c = CaptureConfig { segment_secs: 0, ..CaptureConfig::default() };
+        let c = CaptureConfig {
+            segment_secs: 0,
+            ..CaptureConfig::default()
+        };
         assert!(c.validate().is_err());
     }
 
