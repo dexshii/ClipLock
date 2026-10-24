@@ -94,11 +94,7 @@ impl Recorder {
         let detected_game = st.games.detected.read().clone();
         let manual_game = st.games.manual.read().clone();
         RecorderState {
-            capture_source: self
-                .engine
-                .read()
-                .as_ref()
-                .map(|e| e.config().video.source),
+            capture_source: self.engine.read().as_ref().map(|e| e.config().video.source),
             init: self.init.read().clone().unwrap_or(InitState::Initializing),
             capabilities: self.capabilities(),
             engine: self.engine.read().as_ref().map(|e| e.status()),
