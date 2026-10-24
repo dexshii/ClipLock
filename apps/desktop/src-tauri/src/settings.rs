@@ -459,4 +459,18 @@ mod tests {
             VideoSource::Monitor { index: 0 }
         );
     }
+
+    #[test]
+    fn desktop_target_uses_selected_monitor_even_with_a_detected_game() {
+        let mut s = AppSettings::default();
+        s.recording.capture_target = CaptureTarget::Display;
+        s.recording.monitor_index = 1;
+        assert_eq!(
+            s.capture_config(Some(42)).video.source,
+            VideoSource::Monitor { index: 1 }
+        );
+        let dir = tempfile::tempdir().unwrap();
+        s.save(dir.path()).unwrap();
+        assert_eq!(AppSettings::load(dir.path()).recording.monitor_index, 1);
+    }
 }

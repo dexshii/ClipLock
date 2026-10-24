@@ -1,11 +1,12 @@
-import { CircleDot, Mic, MicOff, Monitor, Pause, Play, Square, AppWindow } from 'lucide-react';
+import { CircleDot, Mic, MicOff, Pause, Play, Square } from 'lucide-react';
 import { PageHeader } from '../components/Layout';
 import { GamePicker } from '../components/GamePicker';
-import { Badge, Button, Card, CardHeader, Kbd, Segmented, Select, SettingRow, Toggle } from '../components/ui';
+import { Badge, Button, Card, CardHeader, Kbd, Select, SettingRow, Toggle } from '../components/ui';
 import { formatClock } from '../lib/format';
 import { useRecorder } from '../stores/recorder';
 import { useSettings } from '../stores/settings';
 import { RESOLUTIONS, FRAME_RATES } from './Settings';
+import { CaptureSourcePicker, QualityPresets } from '../components/CaptureControls';
 
 export function Record() {
   const { state, busy, toggleRecording, togglePause, setMicMuted } = useRecorder();
@@ -15,7 +16,7 @@ export function Record() {
   const ready = state?.init.state === 'ready';
   if (!settings) return null;
   const locked = !!recording;
-  const windowCapture = state?.capabilities?.hasGfxcapture ?? false;
+
 
   return (
     <>
@@ -79,28 +80,7 @@ export function Record() {
         <Card>
           <CardHeader title="Capture" subtitle={locked ? 'Locked while recording' : 'Changes restart Instant Replay'} />
           <div className="mt-2">
-            <SettingRow title="Source">
-              <Segmented
-                label="Capture source"
-                value={settings.recording.captureTarget}
-                onChange={(v) => void update((s) => void (s.recording.captureTarget = v))}
-                options={[
-                  { value: 'display', label: <><Monitor className="size-3.5" /> Display</> },
-                  ...(windowCapture ? [{ value: 'gameWindow' as const, label: <><AppWindow className="size-3.5" /> Game</>, title: 'Capture only the detected game window' }] : []),
-                ]}
-              />
-            </SettingRow>
-            {settings.recording.captureTarget === 'display' && (
-              <SettingRow title="Display">
-                <Select
-                  label="Display"
-                  value={settings.recording.monitorIndex}
-                  disabled={locked}
-                  onChange={(v) => void update((s) => void (s.recording.monitorIndex = v))}
-                  options={[0, 1, 2, 3].map((i) => ({ value: i, label: i === 0 ? 'Display 1 (primary)' : `Display ${i + 1}` }))}
-                />
-              </SettingRow>
-            )}
+            <div className="space-y-5 border-b border-line p-5"><CaptureSourcePicker /><QualityPresets /></div>
             <SettingRow title="Resolution">
               <Select label="Resolution" value={settings.video.outputHeight ?? 0} disabled={locked} onChange={(v) => void update((s) => void (s.video.outputHeight = v || null))} options={RESOLUTIONS} />
             </SettingRow>

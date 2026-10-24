@@ -11,6 +11,7 @@ import { ENCODER_LABELS } from '../lib/format';
 import { useRecorder } from '../stores/recorder';
 import { useSettings } from '../stores/settings';
 import { toast } from '../stores/toasts';
+import { CaptureSourcePicker, QualityPresets } from '../components/CaptureControls';
 
 export const RESOLUTIONS = [
   { value: 0, label: 'Native' },
@@ -167,6 +168,8 @@ function Recording({ s, update }: { s: AppSettings; update: Update }) {
   const [custom, setCustom] = useState(String(r.replaySeconds));
   const reprobe = () => api.reprobeHardware().then(() => toast.info('Re-detecting hardware…'));
   return (
+    <>
+    <Group title="Capture studio"><div className="space-y-5 p-5"><CaptureSourcePicker /><QualityPresets /></div></Group>
     <Group title="Instant Replay">
       <SettingRow title="Instant Replay" description="Continuously buffers recent gameplay while ClipLock runs. Starts automatically when ClipLock launches while turned on.">
         <Toggle label="Instant Replay" checked={r.replayEnabled} onChange={(v) => void update((d) => void (d.recording.replayEnabled = v))} />
@@ -205,6 +208,7 @@ function Recording({ s, update }: { s: AppSettings; update: Update }) {
         </Button>
       </SettingRow>
     </Group>
+    </>
   );
 }
 

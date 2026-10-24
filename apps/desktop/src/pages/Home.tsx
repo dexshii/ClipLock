@@ -11,11 +11,13 @@ import { useLibrary } from '../stores/library';
 import { useRecorder } from '../stores/recorder';
 import { useSettings } from '../stores/settings';
 import { UploadsSummary } from './Uploads';
+import { CaptureSourcePicker, QualityPresets } from '../components/CaptureControls';
+import { quickReplayDurations } from '../lib/capture';
 
 export function Home() {
   return (
     <>
-      <PageHeader title="Home" subtitle="Your capture status at a glance." actions={<GamePicker />} />
+      <PageHeader title="Capture studio" subtitle="Choose your source. Keep the moment." actions={<GamePicker />} />
       <div className="grid grid-cols-1 gap-5 px-8 py-6 xl:grid-cols-3">
         <ReplayCard />
         <RecorderHealth />
@@ -40,6 +42,10 @@ function ReplayCard() {
 
   return (
     <Card className="xl:col-span-2">
+      <div className="space-y-5 border-b border-line bg-surface-2/40 p-6">
+        <CaptureSourcePicker />
+        <QualityPresets />
+      </div>
       <div className="flex items-start justify-between gap-6 p-6">
         <div>
           <div className="flex items-center gap-2">
@@ -49,7 +55,7 @@ function ReplayCard() {
           <p className="mt-1 max-w-md text-sm text-fg-muted">
             {replay
               ? `ClipLock keeps the last ${replay.seconds} seconds in a rolling buffer. Nothing is saved until you ask.`
-              : 'Turn on Instant Replay to keep a rolling buffer of your gameplay and save highlights after they happen.'}
+              : 'Turn on Instant Replay to buffer your desktop or game and save moments after they happen.'}
           </p>
           {replay && (
             <div className="mt-4 w-72">
@@ -80,13 +86,13 @@ function ReplayCard() {
           icon={<Save className="size-4" />}
           onClick={() => void saveReplay()}
           loading={busy.save || state?.saving}
-          disabled={!replay}
+          disabled={!replay || replay.bufferedSeconds < 1 || busy.replay || busy.record}
         >
           Save clip
         </Button>
         {saveKey && (
           <span className="flex items-center gap-1.5 text-xs text-fg-muted">
-            or press <Kbd>{saveKey}</Kbd> in game
+            or press <Kbd>{saveKey}</Kbd> anywhere
           </span>
         )}
         <div className="ml-auto flex items-center gap-2">
@@ -109,6 +115,14 @@ function ReplayCard() {
           </Button>
         </div>
       </div>
+      {replay && <div className="flex flex-wrap items-center gap-2 border-t border-line px-6 py-3">
+        <span className="mr-1 text-xs text-fg-muted">Save last</span>
+        {quickReplayDurations(replay.seconds).map((seconds) => <Button key={seconds} size="sm"
+          disabled={!!busy.save || !!state?.saving || !!busy.replay || !!busy.record || replay.bufferedSeconds < seconds}
+          title={replay.bufferedSeconds < seconds ? `Waiting for ${seconds} seconds of footage` : `Save the last ${seconds} seconds`}
+          onClick={() => void saveReplay(seconds)}>{seconds < 60 ? `${seconds}s` : `${seconds / 60}m`}</Button>)}
+        <Link to="/settings/recording" className="ml-auto text-xs text-accent hover:underline">Buffer settings</Link>
+      </div>}
     </Card>
   );
 }
@@ -148,6 +162,11 @@ function RecorderHealth() {
     <Card>
       <CardHeader title="Recording readiness" subtitle={engine?.running ? 'Capturing' : 'Ready to capture'} />
       <dl className="space-y-3 px-5 pb-5 pt-4 text-sm">
+        <div className="flex items-center justify-between gap-2">
+          <dt className="text-fg-muted">Capture source</dt>
+          <dd>{state.captureSource?.type === 'monitor' ? `Desktop · display ${state.captureSource.index + 1}`
+            : state.captureSource?.type === 'window' ? 'Game window' : 'Not selected'}</dd>
+        </div>
         <div className="flex items-center justify-between">
           <dt className="flex items-center gap-2 text-fg-muted">
             <Cpu className="size-4" /> Encoder

@@ -6,7 +6,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use chrono::Local;
-use cliplock_capture::{Capabilities, CaptureEngine, EngineEvent, EngineStatus, Ffmpeg, SavedClip};
+use cliplock_capture::{
+    Capabilities, CaptureEngine, EngineEvent, EngineStatus, Ffmpeg, SavedClip, VideoSource,
+};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
@@ -40,6 +42,7 @@ pub struct Recorder {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecorderState {
+    pub capture_source: Option<VideoSource>,
     pub init: InitState,
     pub capabilities: Option<Capabilities>,
     pub engine: Option<EngineStatus>,
@@ -91,6 +94,11 @@ impl Recorder {
         let detected_game = st.games.detected.read().clone();
         let manual_game = st.games.manual.read().clone();
         RecorderState {
+            capture_source: self
+                .engine
+                .read()
+                .as_ref()
+                .map(|e| e.config().video.source),
             init: self.init.read().clone().unwrap_or(InitState::Initializing),
             capabilities: self.capabilities(),
             engine: self.engine.read().as_ref().map(|e| e.status()),
@@ -273,9 +281,9 @@ fn announce_capture(app: &AppHandle) {
     };
     if announce {
         let body = if mic {
-            "Instant Replay is buffering your screen, game audio and microphone."
+            "ClipLock is capturing your selected source, system audio and microphone."
         } else {
-            "Instant Replay is buffering your screen and game audio."
+            "ClipLock is capturing your selected source. Microphone is off."
         };
         notify(app, "ClipLock is capturing", body);
     }
@@ -310,7 +318,7 @@ pub fn add_to_library(
             let src = db::get_clip(&st.db.lock(), src)?;
             (src.game_id, src.game_name)
         }
-        None => st.games.current(),
+        None => capture_identity(app),
     };
     let new = NewClip {
         title: title.to_string(),
@@ -401,7 +409,7 @@ pub fn save_replay(app: &AppHandle, seconds: Option<u32>) -> AppResult<Clip> {
     }
     emit_state(app);
     let result = (|| {
-        let (_, game_name) = st.games.current();
+        let (_, game_name) = capture_identity(app);
         let path = output_path(app, game_name.as_deref())?;
         let saved = engine.save_replay(&path, seconds)?;
         add_to_library(
@@ -431,9 +439,10 @@ pub fn save_replay(app: &AppHandle, seconds: Option<u32>) -> AppResult<Clip> {
 
 pub fn start_recording(app: &AppHandle) -> AppResult<()> {
     let st = app.state::<AppState>();
-    let (_, game_name) = st.games.current();
+    let (_, game_name) = capture_identity(app);
     let path = output_path(app, game_name.as_deref())?;
     st.recorder.engine()?.start_recording(&path)?;
+    announce_capture(app);
     cue(app, Cue::RecordingStarted);
     emit_state(app);
     crate::tray::refresh(app);
@@ -447,7 +456,7 @@ pub fn stop_recording(app: &AppHandle) -> AppResult<Clip> {
     emit_state(app);
     crate::tray::refresh(app);
     let saved = saved?;
-    let (_, game_name) = st.games.current();
+    let (_, game_name) = capture_identity(app);
     let title = format!(
         "{} recording · {}",
         game_name.as_deref().unwrap_or("Desktop"),
@@ -527,6 +536,42 @@ pub fn on_game_window_changed(app: &AppHandle) {
             if let Err(e) = engine.set_config(settings.capture_config(st.games.foreground_hwnd())) {
                 tracing::warn!("could not switch capture to the game window: {e}");
             }
+            emit_state(app);
         }
+    }
+}
+
+fn capture_identity(app: &AppHandle) -> (Option<String>, Option<String>) {
+    let st = app.state::<AppState>();
+    let source = st.recorder.engine().ok().map(|e| e.config().video.source);
+    identity_for_source(source.as_ref(), st.games.current())
+}
+
+fn identity_for_source(
+    source: Option<&VideoSource>,
+    game: (Option<String>, Option<String>),
+) -> (Option<String>, Option<String>) {
+    if matches!(source, Some(VideoSource::Monitor { .. })) {
+        (None, Some("Desktop".into()))
+    } else {
+        game
+    }
+}
+
+#[cfg(test)]
+mod capture_identity_tests {
+    use super::*;
+
+    #[test]
+    fn desktop_capture_does_not_inherit_a_running_games_identity() {
+        let game = (Some("deadlock".into()), Some("Deadlock".into()));
+        assert_eq!(
+            identity_for_source(Some(&VideoSource::Monitor { index: 0 }), game.clone()),
+            (None, Some("Desktop".into()))
+        );
+        assert_eq!(
+            identity_for_source(Some(&VideoSource::Window { hwnd: 42 }), game.clone()),
+            game
+        );
     }
 }

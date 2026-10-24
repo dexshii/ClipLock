@@ -6,6 +6,7 @@ import { cx } from './ui';
 export function CaptureStatus({ compact = false }: { compact?: boolean }) {
   const state = useRecorder((s) => s.state);
   const engine = state?.engine;
+  const source = state?.captureSource?.type === 'monitor' ? 'Desktop' : 'Game';
   if (!state || state.init.state === 'initializing') {
     return <Pill dot="bg-fg-subtle" label="Starting…" compact={compact} />;
   }
@@ -15,13 +16,13 @@ export function CaptureStatus({ compact = false }: { compact?: boolean }) {
       <Pill
         dot={engine.recording.paused ? 'bg-warn' : 'bg-rec animate-pulse-rec'}
         label={engine.recording.paused ? 'Paused' : 'Recording'}
-        detail={formatClock(engine.recording.elapsedSecs)}
+        detail={`${source} · ${formatClock(engine.recording.elapsedSecs)}`}
         compact={compact}
       />
     );
   }
   if (engine?.replay) {
-    return <Pill dot="bg-rec" label="Instant Replay" detail={`${engine.replay.seconds}s`} compact={compact} />;
+    return <Pill dot="bg-rec" label={source} detail={`${engine.replay.seconds}s replay`} compact={compact} />;
   }
   return <Pill dot="bg-fg-subtle" label="Not capturing" compact={compact} />;
 }

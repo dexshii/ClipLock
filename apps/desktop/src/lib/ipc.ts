@@ -47,6 +47,7 @@ export interface DetectedGame {
 export type InitState = { state: 'initializing' } | { state: 'ready' } | { state: 'failed'; message: string };
 
 export interface RecorderState {
+  captureSource: { type: 'monitor'; index: number } | { type: 'window'; hwnd: number } | { type: 'testPattern' } | null;
   init: InitState;
   capabilities: Capabilities | null;
   engine: EngineStatus | null;

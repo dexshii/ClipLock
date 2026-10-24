@@ -9,7 +9,7 @@ interface RecorderStore {
   busy: Partial<Record<Action, boolean>>;
   refresh: () => Promise<void>;
   toggleReplay: () => Promise<void>;
-  saveReplay: () => Promise<void>;
+  saveReplay: (seconds?: number) => Promise<void>;
   toggleRecording: () => Promise<void>;
   togglePause: () => Promise<void>;
   setMicMuted: (muted: boolean) => Promise<void>;
@@ -40,11 +40,11 @@ export const useRecorder = create<RecorderStore>((set, get) => {
         () => (get().state?.engine?.replay ? api.stopReplay() : api.startReplay()),
         'Instant Replay could not be changed',
       ),
-    saveReplay: () =>
+    saveReplay: (seconds) =>
       run(
         'save',
         async () => {
-          const clip = await api.saveReplay();
+          const clip = await api.saveReplay(seconds);
           toast.success('Clip saved', clip.title);
         },
         'Could not save clip',
