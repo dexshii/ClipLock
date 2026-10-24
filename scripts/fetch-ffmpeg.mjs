@@ -83,7 +83,8 @@ for (const tool of ['ffmpeg', 'ffprobe']) {
   console.log(`→ ${dest}`);
 }
 const license = find(work, 'license.txt');
-if (license) copyFileSync(license, join(outDir, 'FFMPEG-LICENSE.txt'));
+if (!license) throw new Error('FFmpeg archive has no license.txt; refusing to package without redistribution notices');
+copyFileSync(license, join(outDir, 'FFMPEG-LICENSE.txt'));
 writeFileSync(join(outDir, 'FFMPEG-SOURCE.txt'), `${build.name}\n${build.url}\nsha256 ${build.sha256}\n`);
 rmSync(work, { recursive: true, force: true });
 if (!existsSync(join(outDir, `ffmpeg-${triple}.exe`))) process.exit(1);

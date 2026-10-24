@@ -20,6 +20,18 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Resolve and validate version tag
+        id: version
+        shell: pwsh
+        run: |
+          $desktop = Get-Content apps/desktop/package.json -Raw | ConvertFrom-Json
+          $config = Get-Content apps/desktop/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          if ($desktop.version -ne $config.version) { throw 'Desktop and Tauri versions differ' }
+          $cargo = Get-Content Cargo.toml -Raw
+          if ($cargo -notmatch ('(?m)^version\s*=\s*"' + [regex]::Escape($config.version) + '"\s*$')) { throw 'Cargo workspace version differs' }
+          $tag = "v$($config.version)"
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne $tag) { throw "Tag must match app version: $tag" }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -76,8 +88,22 @@ jobs:
           projectPath: apps/desktop
           tauriScript: pnpm tauri
           args: --config src-tauri/tauri.release.conf.json
-          tagName: ${{ github.ref_name }}
-          releaseName: ClipLock ${{ github.ref_name }}
-          releaseBody: See CHANGELOG.md. Verify the SHA-256 of the installer against the value in the release notes.
+          tagName: ${{ steps.version.outputs.tag }}
+          releaseName: ClipLock ${{ steps.version.outputs.tag }}
+          releaseBody: Windows developer preview. Download the x64 setup executable and verify it with SHA256SUMS.txt. See CHANGELOG.md. Hardware capture and clean-machine installation still need verification.
           releaseDraft: true
           includeUpdaterJson: ${{ vars.UPDATER_PUBKEY != '' }}
+
+      - name: Package installer, licenses and checksums
+        run: node scripts/package-windows.mjs
+      - name: Attach checksums and redistribution notices to draft
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: gh release upload $env:RELEASE_TAG dist/windows/SHA256SUMS.txt dist/windows/LICENSE.txt dist/windows/THIRD_PARTY_NOTICES.md dist/windows/FFMPEG-LICENSE.txt dist/windows/FFMPEG-SOURCE.txt --clobber --repo $env:GITHUB_REPOSITORY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cliplock-windows-release
+          path: dist/windows/*
+          if-no-files-found: error
