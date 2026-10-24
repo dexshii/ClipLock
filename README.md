@@ -61,7 +61,11 @@ docs              Architecture, Discord, self-hosting, releasing, verification
 - **Use the app:** installers will be published on the
   [releases page](https://github.com/dexshii/ClipLock/releases). Until the first release,
   build it yourself ([docs/releasing.md](docs/releasing.md)); CI also produces an
-  unsigned installer artifact for every commit.
+  unsigned installer artifact for each successful Windows build: open
+  **Actions → CI → Artifacts → cliplock-windows-installer**, download and unzip it,
+  then run the included setup executable (GitHub sign-in required).
+  To build locally on Windows, run `pnpm build:installer` after installing the
+  [build prerequisites](docs/releasing.md#build-locally).
 - **Develop:** [docs/development.md](docs/development.md)
 - **Host your own server:** [docs/self-hosting.md](docs/self-hosting.md) — Docker
   Compose with PostgreSQL, MinIO (or any S3-compatible storage) and automatic HTTPS.

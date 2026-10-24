@@ -8,6 +8,8 @@
     "node": ">=22"
   },
   "scripts": {
+    "build:installer": "node scripts/build-installer.mjs",
+    "test:packaging": "node --test scripts/package-windows.test.mjs",
     "build": "pnpm -r --filter ./packages/** run build && pnpm -r --filter ./services/** --filter ./apps/web run build",
     "typecheck": "pnpm -r run typecheck",
     "test": "pnpm -r run test",

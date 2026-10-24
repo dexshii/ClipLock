@@ -8,8 +8,40 @@ Bump the version in `apps/desktop/src-tauri/tauri.conf.json`, the workspace
 builds the NSIS installer on Windows and creates a **draft** GitHub release. Review it,
 test the installer on a clean Windows VM, then publish.
 
-Local build: `node scripts/fetch-ffmpeg.mjs && pnpm --filter @cliplock/desktop tauri build`
-→ `target/release/bundle/nsis/ClipLock_<version>_x64-setup.exe`.
+## Download a development installer
+
+Open the latest successful **CI** run under the repository's **Actions** tab.
+Download **cliplock-windows-installer** from its **Artifacts** section (GitHub
+sign-in is required), unzip it and run `ClipLock_<version>_x64-setup.exe`.
+Artifacts are temporary development builds; permanent public downloads belong in
+**Releases**. A draft release is visible only to repository collaborators until
+published. The setup is unsigned unless an Authenticode certificate is configured.
+
+## Build locally
+
+On Windows x64 install Node.js 22+, pnpm (the version in `package.json`), Rust MSVC
+(the version in `rust-toolchain.toml`) and Visual Studio 2022 Build Tools with
+**Desktop development with C++** and a Windows SDK. Reopen the terminal so `cargo`
+is on PATH, then run from the repository root:
+
+```powershell
+pnpm build:installer
+```
+
+This installs locked dependencies, fetches checksum-verified FFmpeg/FFprobe,
+builds shared code and the desktop app, and creates the NSIS setup. The install
+is per-user and provisions WebView2 if missing (internet is needed for that step).
+The script collects the setup, license notices and `SHA256SUMS.txt` in
+`dist/windows/`. Raw NSIS output remains in `target/release/bundle/nsis/`.
+Verify the executable with `Get-FileHash .\ClipLock_<version>_x64-setup.exe -Algorithm SHA256`
+and compare against `SHA256SUMS.txt`.
+
+## Create a draft release
+
+Push a matching version tag or use **Actions → Release → Run workflow** on the
+desired commit. Manual runs derive `v<version>` from the app configuration;
+tag runs reject a version mismatch. Both attach the setup, SHA-256 manifest and
+redistribution notices to a draft release and upload a workflow artifact.
 
 ## FFmpeg sidecars
 
@@ -40,9 +72,9 @@ certificate as `WINDOWS_CERTIFICATE` (base64 of the `.pfx`) and
 `WINDOWS_CERTIFICATE_PASSWORD`. Certificates kept in an HSM or Azure Trusted Signing need
 a custom `bundle.windows.signCommand` instead (see the Tauri signing guide).
 
-**Current status:** no signing key, certificate or published release exists yet; the
-release workflow has not been run. Until it is, installers are unsigned and in-app
-updates are disabled.
+Signing keys and certificates are optional repository settings; without them,
+installers are unsigned and in-app updates are disabled. A successful artifact
+build alone does not validate installation, GPU capture or Discord playback.
 
 ## Release checklist
 
