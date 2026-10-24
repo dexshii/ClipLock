@@ -44,25 +44,25 @@ export function Library() {
           />
         }
       />
-      <div className="flex flex-wrap items-center gap-2 px-8 pt-5">
+      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface/40 px-6 py-3">
         <div className="relative">
-          <Search className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-fg-subtle" />
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-fg-subtle" />
           <TextInput
             aria-label="Search clips"
             placeholder="Search titles and games"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-72 pl-8"
+            className="h-8! w-60 pl-8 text-xs!"
           />
         </div>
         <Select
-          label="Filter by game"
+          label="Filter by source"
           value={query.game ?? ''}
           onChange={(v) => setQuery({ game: v || null })}
-          className="w-52"
-          options={[{ value: '', label: 'All games' }, ...games.map((g) => ({ value: g, label: g }))]}
+          className="h-8! w-40 text-xs!"
+          options={[{ value: '', label: 'All sources' }, ...games.map((g) => ({ value: g, label: g }))]}
         />
-        <Select label="Sort" value={query.sort ?? 'newest'} onChange={(v) => setQuery({ sort: v })} className="w-40" options={SORTS} />
+        <Select label="Sort" value={query.sort ?? 'newest'} onChange={(v) => setQuery({ sort: v })} className="h-8! w-36 text-xs!" options={SORTS} />
         <Button
           variant={query.favoritesOnly ? 'primary' : 'secondary'}
           icon={<Star className={query.favoritesOnly ? 'size-4 fill-current' : 'size-4'} />}
@@ -73,7 +73,7 @@ export function Library() {
         {loading && <Spinner className="ml-2" />}
       </div>
 
-      <div className="px-8 py-5">
+      <div className="px-6 py-5">
         {clips.length === 0 ? (
           <EmptyState
             icon={<Film className="size-5" />}
@@ -97,21 +97,21 @@ export function Library() {
             }
           />
         ) : view === 'grid' ? (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-4">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-x-4 gap-y-6">
             {clips.map((c) => (
               <ClipCard key={c.id} clip={c} />
             ))}
           </div>
         ) : (
-          <div className="overflow-hidden rounded-lg border border-line bg-surface">
-            <div className="grid grid-cols-[112px_minmax(0,1fr)_140px_90px_80px_90px_110px] gap-4 border-b border-line px-4 py-2 text-xs font-medium text-fg-subtle">
+          <div className="overflow-x-auto rounded-md border border-line bg-surface">
+            <div className="clip-list-row border-b border-line bg-surface-2 px-4 py-2 text-[10px] font-medium text-fg-subtle">
               <span />
               <span>Title</span>
-              <span>Game</span>
+              <span>Source</span>
               <span>Duration</span>
               <span>Quality</span>
               <span>Size</span>
-              <span>Cloud</span>
+              <span>Sharing</span>
             </div>
             {clips.map((c) => (
               <ClipRow key={c.id} clip={c} />

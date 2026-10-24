@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.0 — Desktop workspace (preview)
+
+- Rebuilt Home as a media workspace: recent captures first, with a compact recorder
+  inspector and an effective-source/audio/format status strip.
+- Moved replay saves and recording actions above source/quality configuration so
+  primary capture actions remain easy to reach.
+- Simplified source controls and quality selection; reduced card chrome, corner
+  radii and accent use across the desktop application.
+- Refined navigation, library thumbnails and metadata, filters, list density,
+  recording view and settings spacing. Narrow list views scroll horizontally.
+- Home loads recent captures independently of library filters and handles empty,
+  favorites, loading and error states explicitly.
+- Preserved manual recording, replay durations, quality profiles and source selection;
+  replay saves remain available during manual recording.
+- Added reduced-motion styling and kept the public web player's theme unchanged.
+
 ## 0.2.0 — Capture studio (preview)
 
 - Desktop/game source controls on Home, Record and Recording Settings; selected

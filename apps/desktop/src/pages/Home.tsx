@@ -1,265 +1,221 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertTriangle, CircleDot, Cpu, Film, HardDrive, Pause, Play, Power, Save, Square } from 'lucide-react';
+import { ArrowUpRight, CircleDot, Film, HardDrive, Mic, MicOff, Monitor, AppWindow, Search, Star } from 'lucide-react';
 import { PageHeader } from '../components/Layout';
 import { ClipCard } from '../components/ClipCard';
 import { GamePicker } from '../components/GamePicker';
-import { Badge, Button, Card, CardHeader, EmptyState, Kbd, ProgressBar, Spinner } from '../components/ui';
-import { api, type StorageInfo } from '../lib/ipc';
-import { formatBytes, formatClock, ENCODER_LABELS } from '../lib/format';
+import { RecorderPanel } from '../components/RecorderPanel';
+import { Button, Kbd, Spinner, cx } from '../components/ui';
+import { api, errorMessage, type Clip, type StorageInfo } from '../lib/ipc';
+import { formatBytes } from '../lib/format';
 import { useLibrary } from '../stores/library';
 import { useRecorder } from '../stores/recorder';
 import { useSettings } from '../stores/settings';
-import { UploadsSummary } from './Uploads';
-import { CaptureSourcePicker, QualityPresets } from '../components/CaptureControls';
-import { quickReplayDurations } from '../lib/capture';
 
 export function Home() {
-  const desktop = useSettings((s) => s.settings?.recording.captureTarget === 'display');
+  const library = useLibrary((s) => s.clips);
+  const { settings, saving: settingsSaving } = useSettings();
+  const { state, busy, toggleReplay, saveReplay } = useRecorder();
+  const [clips, setClips] = useState<Clip[]>([]);
+  const [storage, setStorage] = useState<StorageInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refresh, setRefresh] = useState(0);
+  const [favorites, setFavorites] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    void Promise.allSettled([api.listClips({ sort: 'newest' }), api.storageInfo()]).then(([result, info]) => {
+      if (cancelled) return;
+      if (result.status === 'fulfilled') {
+        setClips(result.value);
+        setError(null);
+      } else setError(errorMessage(result.reason));
+      if (info.status === 'fulfilled') setStorage(info.value);
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [library, refresh]);
+  const visible = (favorites ? clips.filter((c) => c.favorite) : clips).slice(0, 12);
+  const replay = state?.engine?.replay;
+  const desktop = settings?.recording.captureTarget === 'display';
+  const source = state?.captureSource;
+  const mic = settings?.audio.micEnabled && !state?.engine?.micMuted;
+  const ready = state?.init.state === 'ready';
   return (
     <>
-      <PageHeader title="Capture studio" subtitle="Choose your source. Keep the moment." actions={desktop ? <Badge>Desktop capture</Badge> : <GamePicker />} />
-      <div className="grid grid-cols-1 gap-5 px-8 py-6 xl:grid-cols-3">
-        <div className="space-y-5 xl:col-span-2">
-          <ReplayCard />
-          <RecentClips />
-        </div>
-        <div className="flex flex-col gap-5">
-          <RecorderHealth />
-          <StorageCard />
-          <UploadsSummary />
-        </div>
-      </div>
-    </>
-  );
-}
-
-function ReplayCard() {
-  const { state, busy, toggleReplay, saveReplay, toggleRecording, togglePause } = useRecorder();
-  const settings = useSettings((s) => s.settings);
-  const engine = state?.engine;
-  const ready = state?.init.state === 'ready';
-  const replay = engine?.replay;
-  const recording = engine?.recording;
-  const saveKey = settings?.hotkeys.saveReplay;
-
-  return (
-    <Card className="xl:col-span-2">
-      <div className="space-y-5 border-b border-line bg-surface-2/40 p-6">
-        <CaptureSourcePicker />
-        <QualityPresets />
-      </div>
-      <div className="flex items-start justify-between gap-6 p-6">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-base font-semibold">Instant Replay</h2>
-            {replay ? <Badge tone="rec">On</Badge> : <Badge>Off</Badge>}
-          </div>
-          <p className="mt-1 max-w-md text-sm text-fg-muted">
-            {replay
-              ? `ClipLock keeps the last ${replay.seconds} seconds in a rolling buffer. Nothing is saved until you ask.`
-              : 'Turn on Instant Replay to buffer your desktop or game and save moments after they happen.'}
-          </p>
-          {replay && (
-            <div className="mt-4 w-72">
-              <div className="mb-1.5 flex justify-between text-xs text-fg-muted">
-                <span>Buffer</span>
-                <span className="tabular-nums">
-                  {Math.floor(replay.bufferedSeconds)}s / {replay.seconds}s
-                </span>
-              </div>
-              <ProgressBar value={replay.bufferedSeconds / replay.seconds} tone="rec" />
-            </div>
-          )}
-        </div>
-        <Button
-          variant={replay ? 'secondary' : 'primary'}
-          icon={<Power className="size-4" />}
-          onClick={() => void toggleReplay()}
-          loading={busy.replay}
-          disabled={!ready || !!recording}
-        >
-          {replay ? 'Turn off' : 'Turn on'}
-        </Button>
-      </div>
-      <div className="flex flex-wrap items-center gap-3 border-t border-line px-6 py-4">
-        <Button
-          variant="primary"
-          size="lg"
-          icon={<Save className="size-4" />}
-          onClick={() => void saveReplay()}
-          loading={busy.save || state?.saving}
-          disabled={!replay || replay.bufferedSeconds < 1 || busy.replay || busy.record}
-        >
-          Save clip
-        </Button>
-        {saveKey && (
-          <span className="flex items-center gap-1.5 text-xs text-fg-muted">
-            or press <Kbd>{saveKey}</Kbd> anywhere
-          </span>
-        )}
-        <div className="ml-auto flex items-center gap-2">
-          {recording && (
-            <>
-              <span className="mr-1 text-sm tabular-nums text-fg-muted">{formatClock(recording.elapsedSecs)}</span>
-              <Button icon={recording.paused ? <Play className="size-4" /> : <Pause className="size-4" />} onClick={() => void togglePause()} loading={busy.pause}>
-                {recording.paused ? 'Resume' : 'Pause'}
-              </Button>
-            </>
-          )}
-          <Button
-            variant={recording ? 'record' : 'secondary'}
-            icon={recording ? <Square className="size-3.5 fill-current" /> : <CircleDot className="size-4" />}
-            onClick={() => void toggleRecording()}
-            loading={busy.record}
-            disabled={!ready}
+      <PageHeader
+        title="Workspace"
+        subtitle="Local recordings and capture controls."
+        actions={
+          <Link
+            to="/record"
+            className="inline-flex h-8 items-center gap-2 rounded-md border border-line-strong bg-surface-2 px-3 text-xs hover:bg-surface-3"
           >
-            {recording ? 'Stop recording' : 'Record'}
-          </Button>
-        </div>
-      </div>
-      {replay && <div className="flex flex-wrap items-center gap-2 border-t border-line px-6 py-3">
-        <span className="mr-1 text-xs text-fg-muted">Save last</span>
-        {quickReplayDurations(replay.seconds).map((seconds) => <Button key={seconds} size="sm"
-          disabled={!!busy.save || !!state?.saving || !!busy.replay || !!busy.record || replay.bufferedSeconds < seconds}
-          title={replay.bufferedSeconds < seconds ? `Waiting for ${seconds} seconds of footage` : `Save the last ${seconds} seconds`}
-          onClick={() => void saveReplay(seconds)}>{seconds < 60 ? `${seconds}s` : `${seconds / 60}m`}</Button>)}
-        <Link to="/settings/recording" className="ml-auto text-xs text-accent hover:underline">Buffer settings</Link>
-      </div>}
-    </Card>
-  );
-}
-
-function RecorderHealth() {
-  const state = useRecorder((s) => s.state);
-  if (!state || state.init.state === 'initializing') {
-    return (
-      <Card className="flex items-center gap-3 p-6">
-        <Spinner />
-        <div>
-          <div className="text-sm font-medium">Preparing recorder</div>
-          <div className="text-xs text-fg-muted">Detecting your GPU encoders…</div>
-        </div>
-      </Card>
-    );
-  }
-  if (state.init.state === 'failed') {
-    return (
-      <Card className="p-6">
-        <div className="flex items-center gap-2 text-sm font-medium text-warn">
-          <AlertTriangle className="size-4" /> Recorder unavailable
-        </div>
-        <p className="mt-2 break-words text-xs text-fg-muted">{state.init.message}</p>
-        <Button className="mt-4" size="sm" onClick={() => void api.reprobeHardware()}>
-          Try again
-        </Button>
-      </Card>
-    );
-  }
-  const engine = state.engine;
-  const best = state.capabilities?.encoders[0];
-  const encoder = engine?.encoder ?? best;
-  const speed = engine?.stats?.speed ?? 0;
-  const struggling = engine?.running && speed > 0 && speed < 0.95;
-  return (
-    <Card>
-      <CardHeader title="Recording readiness" subtitle={engine?.running ? 'Capturing' : 'Ready to capture'} />
-      <dl className="space-y-3 px-5 pb-5 pt-4 text-sm">
-        <div className="flex items-center justify-between gap-2">
-          <dt className="text-fg-muted">Capture source</dt>
-          <dd>{state.captureSource?.type === 'monitor' ? `Desktop · display ${state.captureSource.index + 1}`
-            : state.captureSource?.type === 'window' ? 'Game window' : 'Not selected'}</dd>
-        </div>
-        <div className="flex items-center justify-between">
-          <dt className="flex items-center gap-2 text-fg-muted">
-            <Cpu className="size-4" /> Encoder
-          </dt>
-          <dd className="text-right">
-            {encoder ? ENCODER_LABELS[encoder.kind] ?? encoder.ffmpegName : '—'}
-            {encoder && <Badge className="ml-2" tone={encoder.hardware ? 'ok' : 'warn'}>{encoder.hardware ? 'GPU' : 'CPU'}</Badge>}
-          </dd>
-        </div>
-        <div className="flex items-center justify-between">
-          <dt className="text-fg-muted">Detected game</dt>
-          <dd>{state.manualGame ?? state.detectedGame?.name ?? 'None'}</dd>
-        </div>
-        {engine?.running && engine.stats && (
-          <div className="flex items-center justify-between">
-            <dt className="text-fg-muted">Encoding speed</dt>
-            <dd className={struggling ? 'text-warn' : ''}>
-              {speed.toFixed(2)}× {engine.stats.droppedFrames > 0 && `· ${engine.stats.droppedFrames} dropped`}
-            </dd>
-          </div>
-        )}
-        {struggling && (
-          <p className="rounded-md bg-warn-soft px-3 py-2 text-xs text-warn">
-            The encoder can’t keep up. Lower the resolution, frame rate or bitrate in Settings → Video.
-          </p>
-        )}
-        {engine?.audioWarning && <p className="rounded-md bg-warn-soft px-3 py-2 text-xs text-warn">{engine.audioWarning}</p>}
-        {engine?.lastError && !engine.running && <p className="break-words text-xs text-rec">{engine.lastError}</p>}
-      </dl>
-    </Card>
-  );
-}
-
-function RecentClips() {
-  const clips = useLibrary((s) => s.clips);
-  const recent = [...clips].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 6);
-  return (
-    <Card className="xl:col-span-2">
-      <CardHeader
-        title="Recent clips"
-        action={
-          <Link to="/library" className="text-xs text-accent hover:underline">
-            View library
+            <CircleDot className="size-3.5" />
+            New recording
           </Link>
         }
       />
-      {recent.length === 0 ? (
-        <EmptyState
-          icon={<Film className="size-5" />}
-          title="No clips yet"
-          body="Turn on Instant Replay and press your save hotkey after a great play. Clips show up here instantly."
-        />
-      ) : (
-        <div className="grid grid-cols-2 gap-4 p-5 lg:grid-cols-3">
-          {recent.map((c) => (
-            <ClipCard key={c.id} clip={c} />
-          ))}
-        </div>
-      )}
-    </Card>
-  );
-}
-
-function StorageCard() {
-  const [info, setInfo] = useState<StorageInfo | null>(null);
-  const clipCount = useLibrary((s) => s.clips.length);
-  useEffect(() => {
-    void api.storageInfo().then(setInfo).catch(() => undefined);
-  }, [clipCount]);
-  const used = info?.library.totalBytes ?? 0;
-  const over = info ? used > info.warningBytes : false;
-  return (
-    <Card>
-      <CardHeader title="Storage" subtitle={info?.clipsDir} />
-      <div className="space-y-3 px-5 pb-5 pt-4 text-sm">
-        <div className="flex items-center justify-between">
-          <span className="flex items-center gap-2 text-fg-muted">
-            <HardDrive className="size-4" /> Clips
+      <div className="flex min-h-11 flex-wrap items-center gap-x-5 gap-y-2 border-b border-line px-6 py-2 text-[11px] text-fg-muted">
+        <span className="flex items-center gap-2 text-fg">
+          {source?.type === 'window' ? (
+            <AppWindow className="size-3.5 text-fg-subtle" />
+          ) : (
+            <Monitor className="size-3.5 text-fg-subtle" />
+          )}
+          {source?.type === 'window'
+            ? (state?.manualGame ?? state?.detectedGame?.name ?? 'Game window')
+            : `Desktop / Display ${(source?.type === 'monitor' ? source.index : (settings?.recording.monitorIndex ?? 0)) + 1}`}
+        </span>
+        {settings && (
+          <span className="font-mono text-[10px] text-fg-subtle">
+            {settings.video.outputHeight ? settings.video.outputHeight + 'p' : 'Native'} / {settings.video.fps} fps /{' '}
+            {{ h264: 'H.264', hevc: 'HEVC', av1: 'AV1' }[settings.video.codec]}
           </span>
-          <span className="tabular-nums">
-            {formatBytes(used)} · {info?.library.clipCount ?? 0} clips
-          </span>
-        </div>
-        {info && <ProgressBar value={info.warningBytes ? used / info.warningBytes : 0} tone={over ? 'warn' : 'accent'} />}
-        <div className="flex justify-between text-xs text-fg-muted">
-          <span>Replay buffer {formatBytes(info?.bufferBytes ?? 0)}</span>
-          {info?.freeBytes != null && <span>{formatBytes(info.freeBytes)} free on disk</span>}
-        </div>
-        {over && <p className="text-xs text-warn">Your library is larger than the warning limit set in Settings → Storage.</p>}
+        )}
+        <span className="ml-auto flex items-center gap-1.5 text-fg-subtle">
+          {mic ? <Mic className="size-3" /> : <MicOff className="size-3" />}
+          {mic ? 'Mic on' : 'Mic off'}
+        </span>
+        {!desktop && <GamePicker />}
       </div>
-    </Card>
+      <div className="grid grid-cols-1 gap-6 p-6 lg:grid-cols-[minmax(0,1fr)_296px]">
+        <section className="min-w-0" aria-label="Recent captures">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <h2 className="text-[13px] font-semibold">Recent captures</h2>
+              <span className="font-mono text-[10px] text-fg-subtle">{loading ? '…' : error ? '—' : clips.length}</span>
+            </div>
+            <Link to="/library" className="flex items-center gap-1 text-[11px] text-fg-muted hover:text-fg">
+              Open library
+              <ArrowUpRight className="size-3" />
+            </Link>
+          </div>
+          <div className="mb-5 flex items-center justify-between border-b border-line">
+            <div role="group" aria-label="Recent clip filter" className="flex gap-5">
+              <button
+                aria-pressed={!favorites}
+                onClick={() => setFavorites(false)}
+                className={cx(
+                  'border-b-2 pb-2.5 text-xs',
+                  !favorites ? 'border-fg text-fg' : 'border-transparent text-fg-subtle hover:text-fg',
+                )}
+              >
+                All clips
+              </button>
+              <button
+                aria-pressed={favorites}
+                onClick={() => setFavorites(true)}
+                className={cx(
+                  'flex items-center gap-1.5 border-b-2 pb-2.5 text-xs',
+                  favorites ? 'border-fg text-fg' : 'border-transparent text-fg-subtle hover:text-fg',
+                )}
+              >
+                <Star className="size-3" />
+                Favorites
+              </button>
+            </div>
+            <Link
+              to="/library"
+              aria-label="Search library"
+              title="Search library"
+              className="mb-2 text-fg-subtle hover:text-fg"
+            >
+              <Search className="size-3.5" />
+            </Link>
+          </div>
+          {error ? (
+            <div className="border border-line p-6 text-xs">
+              <p className="text-warn">Could not load recordings</p>
+              <p className="mt-2 text-fg-muted">{error}</p>
+              <Button className="mt-4" size="sm" onClick={() => setRefresh((v) => v + 1)}>
+                Try again
+              </Button>
+            </div>
+          ) : loading && clips.length === 0 ? (
+            <div className="flex min-h-80 items-center justify-center">
+              <Spinner />
+            </div>
+          ) : visible.length > 0 ? (
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-x-4 gap-y-6">
+              {visible.map((clip) => (
+                <ClipCard key={clip.id} clip={clip} />
+              ))}
+            </div>
+          ) : (
+            <div className="flex min-h-[350px] flex-col items-center justify-center border border-line bg-surface/40 px-6 py-10 text-center">
+              <Film className="mb-5 size-7 text-fg-subtle" strokeWidth={1.2} />
+              <h3 className="text-sm font-medium">{favorites ? 'No favorites yet' : 'Nothing recorded yet'}</h3>
+              <p className="mt-2 max-w-[290px] text-xs leading-relaxed text-fg-subtle">
+                {favorites
+                  ? 'Star a clip in your library to keep it here.'
+                  : 'Save a replay after the moment happens, or start a manual recording.'}
+              </p>
+              {!favorites && settings?.hotkeys.saveReplay && (
+                <div className="mt-6 flex items-center gap-1.5">
+                  {settings.hotkeys.saveReplay.split('+').map((key, i) => (
+                    <span key={i} className="flex items-center gap-1.5">
+                      {i > 0 && <span className="text-[10px] text-fg-subtle">+</span>}
+                      <Kbd>{key}</Kbd>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="mt-6 flex items-center gap-3">
+                {favorites ? (
+                  <Button size="sm" onClick={() => setFavorites(false)}>
+                    Show all clips
+                  </Button>
+                ) : (
+                  <>
+                    <Button
+                      size="sm"
+                      disabled={
+                        !ready ||
+                        (!!state?.engine?.recording && !replay) ||
+                        settingsSaving ||
+                        !!busy.record ||
+                        (replay ? replay.bufferedSeconds < 1 : false)
+                      }
+                      loading={busy.replay || busy.save}
+                      onClick={() => void (replay ? saveReplay() : toggleReplay())}
+                    >
+                      {replay ? 'Save first clip' : 'Enable Instant Replay'}
+                    </Button>
+                    <Link to="/record" className="text-xs text-fg-muted hover:text-fg">
+                      Record manually →
+                    </Link>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+          <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line pt-3 text-[10px] text-fg-subtle">
+            <span className="flex items-center gap-1.5">
+              <HardDrive className="size-3" />
+              Local library
+            </span>
+            <span>
+              {storage
+                ? `${formatBytes(storage.library.totalBytes)} / ${storage.library.clipCount} clip${storage.library.clipCount === 1 ? '' : 's'}`
+                : 'Saved on this PC'}
+            </span>
+            {storage?.freeBytes != null && <span className="ml-auto">{formatBytes(storage.freeBytes)} free</span>}
+          </div>
+          {storage && storage.library.totalBytes > storage.warningBytes && (
+            <p className="mt-3 text-xs text-warn">
+              Your library is above its storage warning limit.{' '}
+              <Link to="/settings/storage" className="underline">
+                Manage storage
+              </Link>
+            </p>
+          )}
+        </section>
+        <RecorderPanel />
+      </div>
+    </>
   );
 }

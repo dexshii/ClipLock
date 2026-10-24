@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { AppWindow, Check, Monitor, ShieldCheck } from 'lucide-react';
-import { Badge, Button, cx, TextInput } from './ui';
+import { AppWindow, Check, Monitor } from 'lucide-react';
+import { Button, cx, Select, TextInput } from './ui';
 import { useSettings } from '../stores/settings';
 import { useRecorder } from '../stores/recorder';
 import { CAPTURE_PROFILES, applyCaptureProfile, estimatedBytesPerHour, selectedCaptureProfile } from '../lib/capture';
@@ -17,51 +17,92 @@ export function CaptureSourcePicker() {
   const desktop = settings.recording.captureTarget === 'display';
   const gameAvailable = !!state?.capabilities?.hasGfxcapture;
   const fallback = !desktop && state?.captureSource?.type === 'monitor';
-  const choices = [
-    { id: 'display' as const, title: 'Desktop', description: 'Your entire display, with or without a game.', Icon: Monitor },
-    { id: 'gameWindow' as const, title: 'Game window', description: 'Follow the detected game window.', Icon: AppWindow },
-  ];
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-fg-muted">Capture source</h3>
-        <Badge tone={state?.init.state === 'failed' ? 'warn' : state?.engine?.running ? 'rec' : 'neutral'}>
-          {state?.init.state === 'failed' ? 'Unavailable' : !state || state.init.state === 'initializing' ? 'Preparing' : state.engine?.running ? 'Live' : 'Ready'}
-        </Badge>
+      <div className="flex items-center justify-between text-xs">
+        <span className="font-medium">Capture source</span>
+        {state?.engine?.recording && <span className="text-[10px] text-fg-subtle">Locked during recording</span>}
       </div>
-      <div role="group" aria-label="Capture source" className="grid grid-cols-2 gap-2">
-        {choices.map(({ id, title, description, Icon }) => (
-          <button key={id} aria-pressed={settings.recording.captureTarget === id}
+      <div
+        role="group"
+        aria-label="Capture source"
+        className="grid grid-cols-2 rounded-md border border-line bg-canvas p-0.5"
+      >
+        {(
+          [
+            { id: 'display', title: 'Desktop', Icon: Monitor },
+            { id: 'gameWindow', title: 'Game window', Icon: AppWindow },
+          ] as const
+        ).map(({ id, title, Icon }) => (
+          <button
+            key={id}
+            aria-pressed={settings.recording.captureTarget === id}
             disabled={locked || (id === 'gameWindow' && !gameAvailable)}
-            onClick={() => void update((s) => { s.recording.captureTarget = id; })}
-            className={cx('rounded-lg border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-45',
-              settings.recording.captureTarget === id ? 'border-accent bg-accent/10' : 'border-line bg-surface-2 hover:border-line-strong')}>
-            <span className="flex items-center gap-2 text-sm font-semibold"><Icon className="size-4" />{title}
-              {settings.recording.captureTarget === id && <Check className="ml-auto size-4 text-accent" />}</span>
-            <span className="mt-1.5 block text-xs leading-relaxed text-fg-muted">{description}</span>
+            title={
+              id === 'gameWindow' && !gameAvailable ? 'Window capture is unavailable with this FFmpeg build' : undefined
+            }
+            onClick={() =>
+              void update((s) => {
+                s.recording.captureTarget = id;
+              })
+            }
+            className={cx(
+              'flex h-8 items-center justify-center gap-2 rounded-sm text-xs transition-colors disabled:opacity-40',
+              settings.recording.captureTarget === id ? 'bg-surface-3 text-fg' : 'text-fg-subtle hover:text-fg',
+            )}
+          >
+            <Icon className="size-3.5" strokeWidth={1.6} />
+            {title}
           </button>
         ))}
       </div>
-      {desktop && <form className="flex items-center gap-2" onSubmit={(e) => {
-        e.preventDefault();
-        const number = Number(display);
-        if (Number.isInteger(number) && number >= 1 && number <= 16)
-          void update((s) => { s.recording.monitorIndex = number - 1; });
-      }}>
-        <label htmlFor="capture-display" className="text-xs text-fg-muted">Display number</label>
-        <TextInput id="capture-display" type="number" min={1} max={16} value={display} disabled={locked}
-          onChange={(e) => setDisplay(e.target.value)} className="w-20" />
-        <Button size="sm" type="submit" disabled={locked || Number(display) === settings.recording.monitorIndex + 1}>Apply</Button>
-      </form>}
-      {fallback && <p role="status" className="rounded-md bg-warn-soft p-2.5 text-xs text-warn">
-        No game window is selected. Display {state?.captureSource?.type === 'monitor' ? state.captureSource.index + 1 : settings.recording.monitorIndex + 1} is the current capture source.
-        Choose Desktop to capture it explicitly, or focus a supported game.
-      </p>}
-      {!gameAvailable && <p className="text-xs text-fg-subtle">Game-window capture is unavailable with this FFmpeg build. Desktop capture is available.</p>}
-      <p className="flex items-start gap-2 text-xs leading-relaxed text-fg-subtle"><ShieldCheck className="mt-0.5 size-3.5 shrink-0" />
-        {state?.engine?.recording ? 'Stop recording before changing the source.' : desktop
-          ? 'Desktop clips include every visible window on the selected display. Changing the source clears the replay buffer.'
-          : 'Source changes clear the replay buffer. If no game window is detected, the selected display is used.'}
+      {desktop && (
+        <form
+          className="flex items-center justify-between gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const number = Number(display);
+            if (Number.isInteger(number) && number >= 1 && number <= 16)
+              void update((s) => {
+                s.recording.monitorIndex = number - 1;
+              });
+          }}
+        >
+          <label htmlFor="capture-display" className="text-xs text-fg-muted">
+            Display
+          </label>
+          <div className="flex items-center gap-1.5">
+            <TextInput
+              id="capture-display"
+              aria-label="Display number"
+              type="number"
+              min={1}
+              max={16}
+              value={display}
+              disabled={locked}
+              onChange={(e) => setDisplay(e.target.value)}
+              className="h-7! w-16 font-mono text-xs!"
+            />
+            <Button
+              size="sm"
+              type="submit"
+              aria-label="Apply display"
+              title="Apply display"
+              icon={<Check className="size-3.5" />}
+              disabled={locked || Number(display) === settings.recording.monitorIndex + 1}
+            />
+          </div>
+        </form>
+      )}
+      {fallback && (
+        <p role="status" className="border-l-2 border-warn pl-2 text-[11px] leading-relaxed text-warn">
+          No game window available. Currently capturing the selected display.
+        </p>
+      )}
+      <p className="text-[11px] leading-relaxed text-fg-subtle">
+        {desktop
+          ? 'Includes visible windows on the selected display.'
+          : 'Uses the selected display when no game window is available.'}
       </p>
     </div>
   );
@@ -74,22 +115,33 @@ export function QualityPresets() {
   if (!settings) return null;
   const selected = selectedCaptureProfile(settings);
   const locked = saving || recorderBusy || !!state?.engine?.recording || !!state?.saving;
+  const profile = CAPTURE_PROFILES.find((p) => p.id === selected);
   return (
-    <div>
-      <div className="mb-2 flex items-center justify-between gap-3 text-xs">
-        <span className="font-semibold uppercase tracking-wider text-fg-muted">Quality profile</span>
-        <span className="text-fg-subtle">{selected === 'custom' ? 'Custom · ' : ''}~{formatBytes(estimatedBytesPerHour(settings))}/hour</span>
+    <div className="space-y-2.5">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs font-medium">Quality</span>
+        <Select
+          label="Quality profile"
+          value={selected}
+          disabled={locked}
+          className="h-7! max-w-40 text-xs!"
+          onChange={(id) => {
+            if (id !== 'custom') void update((s) => applyCaptureProfile(s, id));
+          }}
+          options={[
+            ...CAPTURE_PROFILES.map((p) => ({ value: p.id, label: p.name })),
+            ...(selected === 'custom' ? [{ value: 'custom' as const, label: 'Custom' }] : []),
+          ]}
+        />
       </div>
-      <div className="grid grid-cols-3 gap-2" role="group" aria-label="Quality profile">
-        {CAPTURE_PROFILES.map((p) => <button key={p.id} disabled={locked} aria-pressed={selected === p.id}
-          onClick={() => void update((s) => applyCaptureProfile(s, p.id))}
-          className={cx('rounded-lg border p-2.5 text-left transition-colors disabled:opacity-45',
-            selected === p.id ? 'border-accent bg-accent/10' : 'border-line bg-surface-2 hover:border-line-strong')}>
-          <span className="block text-xs font-semibold">{p.name}</span>
-          <span className="mt-1 block text-[10px] text-fg-muted">{p.detail}</span>
-        </button>)}
+      <div className="flex flex-wrap justify-between gap-2 font-mono text-[10px] text-fg-subtle">
+        <span>
+          {profile?.detail ??
+            `${settings.video.outputHeight ? settings.video.outputHeight + 'p' : 'Native'} · ${settings.video.fps} fps · ${settings.video.bitrateKbps / 1000} Mbps`}
+        </span>
+        <span>~{formatBytes(estimatedBytesPerHour(settings))}/h</span>
       </div>
-      <p className="mt-2 text-[11px] text-fg-subtle">Applies H.264 with automatic encoder selection. Audio and privacy choices stay yours.</p>
+      <p className="text-[10px] leading-relaxed text-fg-subtle">Changing source or quality clears the replay buffer.</p>
     </div>
   );
 }

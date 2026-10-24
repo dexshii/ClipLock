@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Cloud, CloudOff, FileWarning, Film, Star } from 'lucide-react';
+import { Cloud, CloudOff, FileWarning, Film, Play, Star } from 'lucide-react';
 import { fileUrl, type Clip } from '../lib/ipc';
 import { formatBytes, formatDuration, formatResolution, relativeTime } from '../lib/format';
 import { Badge, cx } from './ui';
@@ -54,27 +54,28 @@ export function ClipCard({ clip }: { clip: Clip }) {
   return (
     <Link
       to={`/clips/${clip.id}`}
-      className="group block overflow-hidden rounded-lg border border-line bg-surface transition-colors hover:border-line-strong"
+      className="group block min-w-0 rounded-md outline-offset-4"
     >
-      <div className="relative">
-        <Thumb clip={clip} className="aspect-video transition-transform duration-300 group-hover:scale-[1.02]" />
+      <div className="relative overflow-hidden rounded-md border border-line transition-colors group-hover:border-line-strong">
+        <Thumb clip={clip} className="aspect-video" />
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/15 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"><Play className="size-6 fill-white text-white" strokeWidth={1} /></div>
         <span className="absolute bottom-2 right-2 rounded bg-black/75 px-1.5 py-0.5 text-[11px] font-medium tabular-nums">
           {formatDuration(clip.durationMs)}
         </span>
         {clip.favorite && <Star className="absolute left-2 top-2 size-4 fill-warn text-warn drop-shadow" />}
       </div>
-      <div className="p-3">
-        <div className="truncate text-sm font-medium" title={clip.title}>
+      <div className="pt-2.5">
+        <div className="truncate text-[12px] font-medium leading-relaxed group-hover:text-accent" title={clip.title}>
           {clip.title}
         </div>
-        <div className="mt-1 flex items-center gap-2 text-xs text-fg-muted">
+        <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-fg-subtle">
           <span className="truncate">{clip.gameName ?? 'Desktop'}</span>
           <span className="text-fg-subtle">·</span>
           <span className="shrink-0">{relativeTime(clip.createdAt)}</span>
         </div>
-        <div className="mt-2 flex items-center gap-1.5">
-          <Badge>{formatResolution(clip.width, clip.height)}</Badge>
-          <Badge>{formatBytes(clip.sizeBytes)}</Badge>
+        <div className="mt-1.5 flex items-center gap-2 text-[10px] text-fg-subtle">
+          <span className="font-mono">{formatResolution(clip.width, clip.height)} · {Math.round(clip.fps)} fps</span>
+          <span className="ml-auto font-mono">{formatBytes(clip.sizeBytes)}</span>
           <UploadBadge clip={clip} />
         </div>
       </div>
@@ -86,9 +87,9 @@ export function ClipRow({ clip }: { clip: Clip }) {
   return (
     <Link
       to={`/clips/${clip.id}`}
-      className="grid grid-cols-[112px_minmax(0,1fr)_140px_90px_80px_90px_110px] items-center gap-4 border-b border-line px-4 py-2.5 text-sm transition-colors last:border-b-0 hover:bg-surface-2"
+      className="clip-list-row border-b border-line px-4 py-2 text-xs transition-colors last:border-b-0 hover:bg-surface-2"
     >
-      <Thumb clip={clip} className="aspect-video w-28 rounded" />
+      <Thumb clip={clip} className="aspect-video w-[88px] rounded-sm" />
       <div className="min-w-0">
         <div className="flex items-center gap-1.5 truncate font-medium">
           {clip.favorite && <Star className="size-3.5 shrink-0 fill-warn text-warn" />}
@@ -101,7 +102,7 @@ export function ClipRow({ clip }: { clip: Clip }) {
       <span className="text-fg-muted">{formatResolution(clip.width, clip.height)}</span>
       <span className="tabular-nums text-fg-muted">{formatBytes(clip.sizeBytes)}</span>
       <span>
-        <UploadBadge clip={clip} />
+        {clip.status === 'LOCAL' ? <span className="text-fg-subtle">Local</span> : <UploadBadge clip={clip} />}
       </span>
     </Link>
   );

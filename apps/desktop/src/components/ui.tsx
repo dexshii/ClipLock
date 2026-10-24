@@ -8,8 +8,8 @@ export function cx(...classes: (string | false | null | undefined)[]): string {
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'record';
 
 const buttonStyles: Record<ButtonVariant, string> = {
-  primary: 'bg-accent text-white hover:bg-accent-hover',
-  secondary: 'bg-surface-3 text-fg hover:bg-line-strong border border-line',
+  primary: 'bg-accent text-[#101626] hover:bg-accent-hover border border-transparent',
+  secondary: 'bg-surface-2 text-fg hover:bg-surface-3 border border-line-strong',
   ghost: 'text-fg-muted hover:text-fg hover:bg-surface-3',
   danger: 'bg-rec-soft text-rec hover:bg-rec hover:text-white',
   record: 'bg-rec text-white hover:brightness-110',
@@ -23,7 +23,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 export function Button({ variant = 'secondary', size = 'md', loading, icon, className, children, disabled, ...rest }: ButtonProps) {
-  const sizes = { sm: 'h-7 px-2.5 text-xs gap-1.5', md: 'h-9 px-3.5 text-sm gap-2', lg: 'h-11 px-5 text-sm gap-2.5' };
+  const sizes = { sm: 'h-7 px-2.5 text-xs gap-1.5', md: 'h-8 px-3 text-xs gap-2', lg: 'h-10 px-4 text-[13px] gap-2' };
   return (
     <button
       className={cx(
@@ -86,7 +86,7 @@ export function Toggle({ checked, onChange, label, disabled }: { checked: boolea
         checked ? 'bg-accent' : 'bg-line-strong',
       )}
     >
-      <span className={cx('inline-block size-4 rounded-full bg-white shadow transition-transform duration-150', checked ? 'translate-x-[18px]' : 'translate-x-0.5')} />
+      <span className={cx('inline-block size-4 rounded-full transition-transform duration-150', checked ? 'translate-x-[18px] bg-[#101626]' : 'translate-x-0.5 bg-white')} />
     </button>
   );
 }
@@ -207,7 +207,7 @@ export function Spinner({ className }: { className?: string }) {
 export function EmptyState({ icon, title, body, action }: { icon: ReactNode; title: string; body: ReactNode; action?: ReactNode }) {
   return (
     <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-      <div className="mb-4 flex size-12 items-center justify-center rounded-lg border border-line bg-surface-2 text-fg-muted">{icon}</div>
+      <div className="mb-4 flex size-10 items-center justify-center text-fg-subtle">{icon}</div>
       <h3 className="text-sm font-semibold">{title}</h3>
       <p className="mt-1 max-w-sm text-sm text-fg-muted">{body}</p>
       {action && <div className="mt-5">{action}</div>}
