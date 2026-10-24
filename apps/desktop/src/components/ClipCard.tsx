@@ -58,7 +58,7 @@ export function ClipCard({ clip }: { clip: Clip }) {
     >
       <div className="relative overflow-hidden rounded-md border border-line transition-colors group-hover:border-line-strong">
         <Thumb clip={clip} className="aspect-video" />
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/15 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"><Play className="size-6 fill-white text-white" strokeWidth={1} /></div>
+        {clip.fileExists && <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/15 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"><Play className="size-6 fill-white text-white" strokeWidth={1} /></div>}
         <span className="absolute bottom-2 right-2 rounded bg-black/75 px-1.5 py-0.5 text-[11px] font-medium tabular-nums">
           {formatDuration(clip.durationMs)}
         </span>
