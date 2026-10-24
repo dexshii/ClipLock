@@ -20,11 +20,12 @@ export function Record() {
 
   return (
     <>
-      <PageHeader title="Record" subtitle="Manual recording of everything until you press stop." actions={settings.recording.captureTarget === 'display' ? <Badge>Desktop capture</Badge> : <GamePicker />} />
-      <div className="mx-auto grid max-w-5xl grid-cols-1 gap-5 px-8 py-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <Card className="flex flex-col items-center justify-center px-6 py-12 text-center">
+      <PageHeader title="Recording" subtitle="Record continuously until you stop." actions={settings.recording.captureTarget === 'display' ? <Badge>Desktop capture</Badge> : <GamePicker />} />
+      <div className="mx-auto grid max-w-5xl grid-cols-1 gap-6 px-6 py-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <Card className="relative flex min-h-[380px] flex-col items-center justify-center bg-canvas! px-6 py-12 text-center">
+          <div className="absolute left-5 top-4 text-[11px] text-fg-subtle">Recording session</div>
           <div className={recording && !recording.paused ? 'text-rec' : 'text-fg-muted'}>
-            <div className="font-mono text-6xl font-light tabular-nums tracking-tight">{formatClock(recording?.elapsedSecs ?? 0)}</div>
+            <div className="font-mono text-5xl font-normal tabular-nums tracking-tight">{formatClock(recording?.elapsedSecs ?? 0)}</div>
           </div>
           <div className="mt-3 flex items-center gap-2 text-sm text-fg-muted">
             {recording ? (
@@ -36,11 +37,11 @@ export function Record() {
                 </Badge>
               )
             ) : (
-              'Ready'
+              ready ? 'Ready' : state?.init.state === 'failed' ? 'Recorder unavailable' : 'Preparing recorder'
             )}
-            {engine?.replay && !recording && <span>· shares the encoder with Instant Replay</span>}
+            {engine?.replay && !recording && <span>· Instant Replay stays available</span>}
           </div>
-          <div className="mt-8 flex items-center gap-3">
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Button
               size="lg"
               variant={recording ? 'record' : 'primary'}
@@ -75,10 +76,11 @@ export function Record() {
             )}
           </div>
           <p className="mt-6 max-w-sm text-xs text-fg-subtle">Pausing cuts at keyframes, so each pause is accurate to about half a second.</p>
+          {state?.init.state === 'failed' && <p role="alert" className="mt-3 max-w-sm break-words text-xs text-warn">{state.init.message}</p>}
         </Card>
 
         <Card>
-          <CardHeader title="Capture" subtitle={locked ? 'Locked while recording' : 'Changes restart Instant Replay'} />
+          <CardHeader title="Capture settings" subtitle={locked ? 'Locked for this recording' : 'Applied to replay and recording'} />
           <div className="mt-2">
             <div className="space-y-5 border-b border-line p-5"><CaptureSourcePicker /><QualityPresets /></div>
             <SettingRow title="Resolution">

@@ -49,8 +49,8 @@ export function Settings() {
   return (
     <>
       <PageHeader title="Settings" subtitle="Changes are saved automatically." />
-      <div className="flex gap-8 px-8 py-6">
-        <nav aria-label="Settings sections" className="w-44 shrink-0">
+      <div className="flex gap-6 px-6 py-6">
+        <nav aria-label="Settings sections" className="w-36 shrink-0">
           <ul className="space-y-0.5">
             {SECTIONS.map(([id, label]) => (
               <li key={id}>
@@ -169,7 +169,7 @@ function Recording({ s, update }: { s: AppSettings; update: Update }) {
   const reprobe = () => api.reprobeHardware().then(() => toast.info('Re-detecting hardware…'));
   return (
     <>
-    <Group title="Capture studio"><div className="space-y-5 p-5"><CaptureSourcePicker /><QualityPresets /></div></Group>
+    <Group title="Capture setup"><div className="space-y-5 p-5"><CaptureSourcePicker /><QualityPresets /></div></Group>
     <Group title="Instant Replay">
       <SettingRow title="Instant Replay" description="Continuously buffers recent gameplay while ClipLock runs. Starts automatically when ClipLock launches while turned on.">
         <Toggle label="Instant Replay" checked={r.replayEnabled} onChange={(v) => void update((d) => void (d.recording.replayEnabled = v))} />
