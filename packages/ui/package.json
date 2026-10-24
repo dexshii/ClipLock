@@ -1,0 +1,12 @@
+{
+  "name": "@cliplock/ui",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "ClipLock design tokens (Tailwind CSS v4 theme) shared by the desktop app and the website.",
+  "exports": {
+    "./theme.css": "./theme.css",
+    "./logo.svg": "./logo.svg"
+  },
+  "files": ["theme.css", "logo.svg"]
+}

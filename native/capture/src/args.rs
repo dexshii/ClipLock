@@ -30,14 +30,26 @@ fn test_pattern_size(height: Option<u32>) -> (u32, u32) {
     (w, h)
 }
 
+/// Whether the source yields D3D11 GPU frames (Windows capture filters).
 pub fn is_d3d11_source(source: &VideoSource) -> bool {
-    matches!(source, VideoSource::Monitor { .. } | VideoSource::Window { .. })
+    cfg!(windows) && matches!(source, VideoSource::Monitor { .. } | VideoSource::Window { .. })
 }
 
 pub fn video_input(config: &CaptureConfig, caps: &Capabilities) -> Vec<String> {
     let v = &config.video;
     let cursor = u8::from(v.capture_cursor);
     match &v.source {
+        // Development convenience on Linux/X11: capture the X display (CPU frames).
+        VideoSource::Monitor { .. } | VideoSource::Window { .. } if !cfg!(windows) => vec![
+            "-f".into(),
+            "x11grab".into(),
+            "-framerate".into(),
+            v.fps.to_string(),
+            "-draw_mouse".into(),
+            cursor.to_string(),
+            "-i".into(),
+            std::env::var("DISPLAY").unwrap_or_else(|_| ":0".into()),
+        ],
         VideoSource::Monitor { index } if caps.has_ddagrab || !caps.has_gfxcapture => vec![
             "-f".into(),
             "lavfi".into(),
@@ -74,7 +86,8 @@ pub fn video_filter(plan: &SessionPlan) -> Option<String> {
     let v = &plan.config.video;
     let kind = plan.encoder.kind;
     let sw_format = if kind == EncoderKind::OpenH264 { "yuv420p" } else { "nv12" };
-    let height = v.output_height.map_or_else(|| "ih".to_string(), |h| h.to_string());
+    // Never upscale: the output is at most the source height.
+    let height = v.output_height.map_or_else(|| "ih".to_string(), |h| format!("min({h}\\,ih)"));
     let mut chain: Vec<String> = Vec::new();
 
     if !is_d3d11_source(&v.source) {
@@ -262,13 +275,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn nvenc_with_gpu_scaling_stays_on_gpu() {
         let config = CaptureConfig::default();
         let caps = caps(true);
         let e = enc(EncoderKind::Nvenc, "h264_nvenc", true);
         let dir = PathBuf::from("buf");
         let plan = SessionPlan { config: &config, caps: &caps, encoder: &e, gpu_path: true, session_dir: &dir, audio_tracks: &[] };
-        assert_eq!(video_filter(&plan).unwrap(), "scale_d3d11=width=-2:height=1080:format=nv12");
+        assert_eq!(video_filter(&plan).unwrap(), "scale_d3d11=width=-2:height=min(1080\\,ih):format=nv12");
         let args = build_args(&plan);
         let joined = args.join(" ");
         assert!(joined.contains("ddagrab=output_idx=0:framerate=60:draw_mouse=0"));
@@ -279,6 +293,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn falls_back_to_cpu_conversion() {
         let mut config = CaptureConfig::default();
         config.video.output_height = Some(720);
@@ -286,7 +301,7 @@ mod tests {
         let e = enc(EncoderKind::Nvenc, "h264_nvenc", true);
         let dir = PathBuf::from("buf");
         let plan = SessionPlan { config: &config, caps: &caps, encoder: &e, gpu_path: true, session_dir: &dir, audio_tracks: &[] };
-        assert_eq!(video_filter(&plan).unwrap(), "hwdownload,format=bgra,scale=-2:720:flags=bilinear,format=nv12");
+        assert_eq!(video_filter(&plan).unwrap(), "hwdownload,format=bgra,scale=-2:min(720\\,ih):flags=bilinear,format=nv12");
         config.video.output_height = None;
         let plan = SessionPlan { config: &config, caps: &caps, encoder: &e, gpu_path: true, session_dir: &dir, audio_tracks: &[] };
         assert_eq!(video_filter(&plan), None, "native size NVENC is zero-copy");
@@ -310,6 +325,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn window_capture_uses_gfxcapture() {
         let mut config = CaptureConfig::default();
         config.video.source = VideoSource::Window { hwnd: 1234 };

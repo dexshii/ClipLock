@@ -142,7 +142,7 @@ struct Inner {
 pub struct CaptureEngine {
     inner: Arc<Mutex<Inner>>,
     shutdown: Arc<AtomicBool>,
-    maintenance: Option<JoinHandle<()>>,
+    maintenance: Mutex<Option<JoinHandle<()>>>,
 }
 
 fn unix_ms() -> u128 {
@@ -199,7 +199,7 @@ impl CaptureEngine {
                 }
             })?
         };
-        Ok(Self { inner, shutdown, maintenance: Some(maintenance) })
+        Ok(Self { inner, shutdown, maintenance: Mutex::new(Some(maintenance)) })
     }
 
     pub fn set_event_handler(&self, handler: EventHandler) {
@@ -539,8 +539,8 @@ impl CaptureEngine {
         }
     }
 
-    /// Stops everything, finalizing an active recording first.
-    pub fn shutdown(&mut self) -> Option<Result<SavedClip>> {
+    /// Stops everything, finalizing an active recording first. Idempotent.
+    pub fn shutdown(&self) -> Option<Result<SavedClip>> {
         let recording_active = self.inner.lock().recording.is_some();
         let saved = recording_active.then(|| self.stop_recording());
         {
@@ -549,7 +549,8 @@ impl CaptureEngine {
             stop_pipeline(&mut inner, true);
         }
         self.shutdown.store(true, Ordering::Relaxed);
-        if let Some(t) = self.maintenance.take() {
+        let handle = self.maintenance.lock().take();
+        if let Some(t) = handle {
             let _ = t.join();
         }
         saved
@@ -558,7 +559,7 @@ impl CaptureEngine {
 
 impl Drop for CaptureEngine {
     fn drop(&mut self) {
-        if self.maintenance.is_some() {
+        if self.maintenance.lock().is_some() {
             let _ = self.shutdown();
         }
     }

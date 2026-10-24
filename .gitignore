@@ -15,3 +15,7 @@ coverage/
 # local data produced by dev runs
 .cliplock-dev/
 tests/.tmp/
+# FFmpeg sidecars are downloaded by scripts/fetch-ffmpeg (see docs/building.md)
+apps/desktop/src-tauri/binaries/*
+!apps/desktop/src-tauri/binaries/README.md
+apps/desktop/src-tauri/gen/
