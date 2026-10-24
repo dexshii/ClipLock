@@ -29,6 +29,25 @@ jobs:
       - run: pnpm -r typecheck
       - run: pnpm -r test
       - run: pnpm --filter @cliplock/desktop exec vite build
+      - run: pnpm --filter @cliplock/web build
+
+  docker:
+    name: Server images build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [api, worker, web]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infrastructure/Dockerfile
+          target: ${{ matrix.target }}
+          push: false
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}
 
   services:
     name: API + worker integration (PostgreSQL, S3, FFmpeg)

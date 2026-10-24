@@ -256,6 +256,21 @@ mod tests {
     }
 
     #[test]
+    fn bundled_database_has_no_duplicates() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/games.json");
+        let db = GameDb::load(&path, &[]);
+        let mut ids = std::collections::HashSet::new();
+        let mut exes = std::collections::HashSet::new();
+        for g in db.entries() {
+            assert!(ids.insert(g.id.clone()), "duplicate id {}", g.id);
+            assert!(!g.executables.is_empty(), "{} has no executables", g.id);
+            for e in &g.executables {
+                assert!(exes.insert(e.to_ascii_lowercase()), "duplicate executable {e}");
+            }
+        }
+    }
+
+    #[test]
     fn prefers_foreground_game() {
         let db = db();
         let running = vec![

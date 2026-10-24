@@ -333,3 +333,15 @@ export const cloud = {
   setVisibility: (id: string, visibility: Visibility) => invoke<Clip>('set_cloud_visibility', { id, visibility }),
   deleteCloudCopy: (id: string) => invoke<Clip>('delete_cloud_copy', { id }),
 };
+
+export interface UpdateInfo {
+  configured: boolean;
+  currentVersion: string;
+  available: string | null;
+  notes: string | null;
+}
+
+export const updates = {
+  check: () => invoke<UpdateInfo>('check_for_update'),
+  install: () => invoke<void>('install_update'),
+};

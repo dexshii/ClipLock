@@ -6,7 +6,7 @@ import { REPLAY_DURATION_PRESETS_SECONDS } from '@cliplock/shared';
 import { PageHeader } from '../components/Layout';
 import { HotkeyInput } from '../components/HotkeyInput';
 import { Button, Card, Select, SettingRow, Slider, TextInput, Toggle, cx } from '../components/ui';
-import { api, type AppInfo, type AppSettings, type AudioDevice, type Codec, type EncoderKind } from '../lib/ipc';
+import { api, errorMessage, updates, type AppInfo, type AppSettings, type AudioDevice, type Codec, type EncoderKind, type UpdateInfo } from '../lib/ipc';
 import { ENCODER_LABELS } from '../lib/format';
 import { useRecorder } from '../stores/recorder';
 import { useSettings } from '../stores/settings';
@@ -128,6 +128,7 @@ function General({ s, update }: { s: AppSettings; update: Update }) {
           <Toggle label="Game detection" checked={g.gameDetection} onChange={(v) => void update((d) => void (d.general.gameDetection = v))} />
         </SettingRow>
       </Group>
+      <UpdatesGroup />
       <Group title="Custom games" description="Teach ClipLock about games that aren’t detected automatically.">
         {g.customGames.map((game, i) => (
           <SettingRow key={`${game.executable}-${i}`} title={game.name} description={game.executable}>
@@ -413,5 +414,57 @@ function Privacy({ s, update }: { s: AppSettings; update: Update }) {
         </SettingRow>
       </Group>
     </>
+  );
+}
+
+function UpdatesGroup() {
+  const [info, setInfo] = useState<UpdateInfo | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    void updates.check().then(setInfo).catch(() => undefined);
+  }, []);
+  const check = async () => {
+    setBusy(true);
+    try {
+      const result = await updates.check();
+      setInfo(result);
+      if (result.configured && !result.available) toast.info('ClipLock is up to date');
+    } catch (e) {
+      toast.error('Update check failed', errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Group title="Updates">
+      <SettingRow
+        title={`ClipLock ${info?.currentVersion ?? ''}`}
+        description={
+          !info
+            ? 'Checking…'
+            : !info.configured
+              ? 'This build has no signed update channel. Get new versions from the releases page.'
+              : info.available
+                ? `Version ${info.available} is available. Updates are verified against ClipLock's signing key before installing.`
+                : 'You are on the latest version.'
+        }
+      >
+        {info?.configured && info.available ? (
+          <Button size="sm" variant="primary" loading={busy} onClick={() => {
+            setBusy(true);
+            updates.install().catch((e) => {
+              toast.error('Update failed', errorMessage(e));
+              setBusy(false);
+            });
+          }}>
+            Install and restart
+          </Button>
+        ) : (
+          <Button size="sm" loading={busy} disabled={!info?.configured} onClick={() => void check()}>
+            Check for updates
+          </Button>
+        )}
+      </SettingRow>
+    </Group>
   );
 }

@@ -19,3 +19,4 @@ tests/.tmp/
 apps/desktop/src-tauri/binaries/*
 !apps/desktop/src-tauri/binaries/README.md
 apps/desktop/src-tauri/gen/
+apps/desktop/src-tauri/tauri.release.conf.json

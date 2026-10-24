@@ -1,0 +1,83 @@
+name: Release
+
+# Builds the Windows installer for a version tag (v1.2.3) and attaches it to a draft
+# GitHub release. Signing is opt-in and only happens when the secrets exist:
+#   TAURI_SIGNING_PRIVATE_KEY / _PASSWORD + variable UPDATER_PUBKEY  → signed in-app updates
+#   WINDOWS_CERTIFICATE (base64 .pfx) / WINDOWS_CERTIFICATE_PASSWORD → Authenticode-signed installer
+# Without them the installer is unsigned and the app has no update channel.
+# See docs/releasing.md.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Fetch FFmpeg sidecars (checksum verified; pin with FFMPEG_ZIP_URL/FFMPEG_ZIP_SHA256 variables)
+        run: node scripts/fetch-ffmpeg.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FFMPEG_ZIP_URL: ${{ vars.FFMPEG_ZIP_URL }}
+          FFMPEG_ZIP_SHA256: ${{ vars.FFMPEG_ZIP_SHA256 }}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @cliplock/shared build
+
+      - name: Release configuration (updater, code signing)
+        shell: pwsh
+        env:
+          UPDATER_PUBKEY: ${{ vars.UPDATER_PUBKEY }}
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $config = @{ bundle = @{ windows = @{} }; plugins = @{} }
+          if ($env:UPDATER_PUBKEY) {
+            $config.bundle.createUpdaterArtifacts = $true
+            $config.plugins.updater = @{
+              pubkey = $env:UPDATER_PUBKEY
+              endpoints = @("https://github.com/${{ github.repository }}/releases/latest/download/latest.json")
+              requireSignedVersion = $true
+            }
+            Write-Host "Signed updates enabled"
+          } else { Write-Host "UPDATER_PUBKEY not set: building without an update channel" }
+          if ($env:WINDOWS_CERTIFICATE) {
+            $pfx = Join-Path $env:RUNNER_TEMP 'cert.pfx'
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+            $password = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+            $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password
+            Remove-Item $pfx
+            $config.bundle.windows.certificateThumbprint = $cert.Thumbprint
+            $config.bundle.windows.digestAlgorithm = 'sha256'
+            $config.bundle.windows.timestampUrl = 'http://timestamp.digicert.com'
+            Write-Host "Authenticode signing enabled"
+          } else { Write-Host "WINDOWS_CERTIFICATE not set: installer will be unsigned" }
+          $config | ConvertTo-Json -Depth 6 | Set-Content apps/desktop/src-tauri/tauri.release.conf.json
+
+      - name: Build and publish draft release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: apps/desktop
+          tauriScript: pnpm tauri
+          args: --config src-tauri/tauri.release.conf.json
+          tagName: ${{ github.ref_name }}
+          releaseName: ClipLock ${{ github.ref_name }}
+          releaseBody: See CHANGELOG.md. Verify the SHA-256 of the installer against the value in the release notes.
+          releaseDraft: true
+          includeUpdaterJson: ${{ vars.UPDATER_PUBKEY != '' }}

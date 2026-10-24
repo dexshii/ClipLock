@@ -80,9 +80,12 @@
   },
   "plugins": {
     "updater": {
-      "active": false,
+      "pubkey": "",
       "endpoints": [],
-      "pubkey": ""
+      "requireSignedVersion": true,
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }

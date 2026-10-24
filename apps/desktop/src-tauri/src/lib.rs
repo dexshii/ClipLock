@@ -14,6 +14,7 @@ mod settings;
 mod sound;
 mod state;
 mod tray;
+mod updates;
 mod uploads;
 mod util;
 
@@ -169,6 +170,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
             Some(vec!["--minimized"]),
@@ -240,6 +242,8 @@ pub fn run() {
             commands_cloud::cancel_upload,
             commands_cloud::set_cloud_visibility,
             commands_cloud::delete_cloud_copy,
+            updates::check_for_update,
+            updates::install_update,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ClipLock");

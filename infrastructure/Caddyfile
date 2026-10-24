@@ -1,0 +1,33 @@
+# One public origin for the website, API and media; a second hostname for direct
+# uploads to object storage (presigned URLs).
+{$CLIPLOCK_DOMAIN} {
+	encode zstd gzip {
+		# Never re-compress video; it breaks byte ranges and wastes CPU.
+		match {
+			header Content-Type text/*
+			header Content-Type application/json*
+			header Content-Type application/javascript*
+		}
+	}
+	handle /media/* {
+		reverse_proxy api:8080 {
+			flush_interval -1
+		}
+	}
+	handle /v1/* {
+		reverse_proxy api:8080
+	}
+	handle /docs* {
+		reverse_proxy api:8080
+	}
+	handle {
+		reverse_proxy web:3000
+	}
+}
+
+{$STORAGE_DOMAIN} {
+	request_body {
+		max_size 64MB
+	}
+	reverse_proxy minio:9000
+}
