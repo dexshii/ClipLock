@@ -26,7 +26,8 @@ Legend: ✅ verified by automated tests or a recorded manual run · 🟡 partial
 
 | Capability | Status | Evidence |
 | --- | --- | --- |
-| Builds on Windows; NSIS installer produced | 🟡 | Windows CI job builds the installer artifact; installing/uninstalling not yet tested by a person |
+| Compiles and passes clippy + unit tests on Windows (MSVC) | ✅ | Windows CI job |
+| NSIS installer produced | 🟡 | Windows CI job builds it (unsigned); installing/uninstalling not yet tested by a person |
 | Settings persistence, validation, backup recovery | ✅ | Rust unit tests |
 | SQLite library (search, filters, sorting, favorites, upload state) | ✅ | Rust unit tests |
 | Game database matching | ✅ | Rust unit tests; Windows foreground-window detection ⛔ |
@@ -45,7 +46,8 @@ Legend: ✅ verified by automated tests or a recorded manual run · 🟡 partial
 | Media endpoint: 200/206/416, HEAD Content-Length, ETag, private signed URLs, no access across accounts, purge | ✅ | same |
 | Desktop → server: sign up, upload, processing, share link (real UI, local server) | ✅ | manual run during development |
 | Credential persistence in Windows Credential Manager | ⛔ | Linux dev keyring is per-session |
-| Docker images and docker-compose deployment | 🟡 | images built in CI; compose config validated; a full deployment with TLS not yet run |
+| Docker images (api, worker, web) | ✅ | built in CI; `pnpm deploy` output started locally |
+| docker-compose deployment | 🟡 | compose config validated; a full deployment with TLS not yet run |
 | Real MinIO / AWS S3 / R2 | 🟡 | tests use an S3 emulator (moto); production providers untested |
 
 ## Sharing and Discord

@@ -265,7 +265,10 @@ mod tests {
             assert!(ids.insert(g.id.clone()), "duplicate id {}", g.id);
             assert!(!g.executables.is_empty(), "{} has no executables", g.id);
             for e in &g.executables {
-                assert!(exes.insert(e.to_ascii_lowercase()), "duplicate executable {e}");
+                assert!(
+                    exes.insert(e.to_ascii_lowercase()),
+                    "duplicate executable {e}"
+                );
             }
         }
     }
