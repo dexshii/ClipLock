@@ -1,6 +1,8 @@
 //! ClipLock desktop application.
 
+mod cloud;
 mod commands;
+mod commands_cloud;
 mod db;
 mod error;
 mod games;
@@ -12,6 +14,7 @@ mod settings;
 mod sound;
 mod state;
 mod tray;
+mod uploads;
 mod util;
 
 use std::time::{Duration, Instant};
@@ -56,6 +59,8 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         &settings.general.custom_games,
     );
     app.manage(hotkeys::HotkeyMap::default());
+    let cloud = cloud::Cloud::new();
+    cloud.set_server(&settings.uploads.server_url);
     app.manage(AppState {
         paths,
         settings: RwLock::new(settings.clone()),
@@ -65,6 +70,8 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             db: RwLock::new(game_db),
             ..Default::default()
         },
+        cloud,
+        uploads: uploads::Uploads::start(handle.clone()),
     });
 
     tray::create(&handle)?;
@@ -87,6 +94,23 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     recorder::initialize(handle.clone(), false);
+    if !settings.uploads.server_url.is_empty() {
+        let app = handle.clone();
+        tauri::async_runtime::spawn(async move {
+            match app.state::<AppState>().cloud.restore().await {
+                Ok(Some(user)) => {
+                    tracing::info!(
+                        "signed in to {} as {}",
+                        app.state::<AppState>().settings.read().uploads.server_url,
+                        user.display_name
+                    );
+                    uploads::resume_interrupted(&app);
+                }
+                Ok(None) => {}
+                Err(e) => tracing::warn!("could not restore cloud session: {e}"),
+            }
+        });
+    }
     start_game_detection(handle);
     Ok(())
 }
@@ -144,6 +168,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
             Some(vec!["--minimized"]),
@@ -201,6 +226,20 @@ pub fn run() {
             commands::storage_info,
             commands::regenerate_thumbnail,
             commands::export_edit,
+            commands_cloud::cloud_status,
+            commands_cloud::cloud_server_info,
+            commands_cloud::cloud_register,
+            commands_cloud::cloud_login,
+            commands_cloud::cloud_restore,
+            commands_cloud::cloud_logout,
+            commands_cloud::cloud_update_profile,
+            commands_cloud::cloud_usage,
+            commands_cloud::cloud_delete_account,
+            commands_cloud::cloud_list_clips,
+            commands_cloud::upload_clip,
+            commands_cloud::cancel_upload,
+            commands_cloud::set_cloud_visibility,
+            commands_cloud::delete_cloud_copy,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ClipLock");

@@ -3,7 +3,6 @@ use serde::Serialize;
 /// Error type returned by Tauri commands. Serialized as `{ "kind": ..., "message": ... }`
 /// so the UI can show a meaningful message.
 #[derive(Debug, thiserror::Error)]
-#[allow(dead_code)] // Unauthorized/Api are produced by the cloud client
 pub enum AppError {
     #[error("{0}")]
     Capture(#[from] cliplock_capture::CaptureError),

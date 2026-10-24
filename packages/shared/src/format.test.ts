@@ -56,3 +56,12 @@ describe('schemas', () => {
     expect(createClipBodySchema.safeParse({ ...parsed, sha256: 'XYZ' }).success).toBe(false);
   });
 });
+
+describe('recordedAt', () => {
+  it('accepts UTC and offset timestamps from clients', () => {
+    const base = { title: 't', durationMs: 1, width: 1, height: 1, sizeBytes: 1, sha256: 'a'.repeat(64) };
+    expect(createClipBodySchema.safeParse({ ...base, recordedAt: '2026-10-24T17:39:33.000Z' }).success).toBe(true);
+    expect(createClipBodySchema.safeParse({ ...base, recordedAt: '2026-10-24T17:39:33.123+00:00' }).success).toBe(true);
+    expect(createClipBodySchema.safeParse({ ...base, recordedAt: 'yesterday' }).success).toBe(false);
+  });
+});

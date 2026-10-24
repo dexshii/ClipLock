@@ -83,7 +83,7 @@ export const createClipBodySchema = z.object({
   sha256: z.string().regex(/^[a-f0-9]{64}$/, 'sha256 must be lowercase hex'),
   visibility: visibilitySchema.default('unlisted'),
   allowDownload: z.boolean().default(true),
-  recordedAt: z.iso.datetime().nullish(),
+  recordedAt: z.iso.datetime({ offset: true }).nullish(),
 });
 export type CreateClipBody = z.infer<typeof createClipBodySchema>;
 

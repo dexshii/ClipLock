@@ -12,13 +12,14 @@ import { Settings } from './pages/Settings';
 import { Uploads } from './pages/Uploads';
 import { startLibrarySync } from './stores/library';
 import { startRecorderSync } from './stores/recorder';
+import { startCloudSync } from './stores/cloud';
 import { useSettings } from './stores/settings';
 import { on } from './lib/ipc';
 
 export function App() {
   useEffect(() => {
     void useSettings.getState().load();
-    const stops = [startRecorderSync(), startLibrarySync()];
+    const stops = [startRecorderSync(), startLibrarySync(), startCloudSync()];
     const sub = on('settings-changed', () => void useSettings.getState().load());
     return () => {
       stops.forEach((s) => s());

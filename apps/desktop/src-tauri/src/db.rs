@@ -372,7 +372,6 @@ pub fn stats(conn: &Connection) -> AppResult<LibraryStats> {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
-#[allow(dead_code)] // wired up by the upload queue
 pub struct CloudUpdate {
     pub status: Option<String>,
     pub progress: Option<Option<f64>>,
@@ -384,7 +383,6 @@ pub struct CloudUpdate {
     pub sha256: Option<String>,
 }
 
-#[allow(dead_code)] // wired up by the upload queue
 pub fn update_cloud(conn: &Connection, id: &str, u: &CloudUpdate) -> AppResult<Clip> {
     let tx = conn.unchecked_transaction()?;
     if let Some(s) = &u.status {
@@ -435,7 +433,6 @@ pub fn update_cloud(conn: &Connection, id: &str, u: &CloudUpdate) -> AppResult<C
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)] // wired up by the upload queue
 pub struct UploadSession {
     pub clip_id: String,
     pub cloud_id: String,
@@ -446,7 +443,6 @@ pub struct UploadSession {
     pub parts: Vec<(i64, String)>,
 }
 
-#[allow(dead_code)] // wired up by the upload queue
 pub fn save_upload_session(conn: &Connection, s: &UploadSession) -> AppResult<()> {
     conn.execute(
         "INSERT INTO upload_sessions (clip_id, cloud_id, server_url, part_size, part_count, parts_json, updated_at)
@@ -458,7 +454,6 @@ pub fn save_upload_session(conn: &Connection, s: &UploadSession) -> AppResult<()
     Ok(())
 }
 
-#[allow(dead_code)] // wired up by the upload queue
 pub fn get_upload_session(conn: &Connection, clip_id: &str) -> AppResult<Option<UploadSession>> {
     conn.query_row(
         "SELECT clip_id, cloud_id, server_url, part_size, part_count, parts_json FROM upload_sessions WHERE clip_id = ?1",
@@ -479,14 +474,12 @@ pub fn get_upload_session(conn: &Connection, clip_id: &str) -> AppResult<Option<
     .map_err(Into::into)
 }
 
-#[allow(dead_code)] // wired up by the upload queue
 pub fn delete_upload_session(conn: &Connection, clip_id: &str) -> AppResult<()> {
     conn.execute("DELETE FROM upload_sessions WHERE clip_id = ?1", [clip_id])?;
     Ok(())
 }
 
 /// Clips whose upload was interrupted (app closed while queued/uploading).
-#[allow(dead_code)] // wired up by the upload queue
 pub fn interrupted_uploads(conn: &Connection) -> AppResult<Vec<String>> {
     let mut stmt = conn.prepare(
         "SELECT id FROM clips WHERE status IN ('QUEUED', 'UPLOADING') ORDER BY created_at",

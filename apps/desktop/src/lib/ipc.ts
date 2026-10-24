@@ -260,3 +260,76 @@ export function on<T>(event: string, handler: (payload: T) => void): Promise<Unl
 export function fileUrl(path: string | null | undefined): string | undefined {
   return path ? convertFileSrc(path) : undefined;
 }
+
+// ------------------------------------------------------------------ cloud
+
+export interface CloudUser {
+  id: string;
+  email: string;
+  displayName: string;
+  createdAt: string;
+}
+
+export interface CloudStatus {
+  serverUrl: string;
+  user: CloudUser | null;
+  hasStoredSession: boolean;
+}
+
+export interface ServerInfo {
+  name: string;
+  publicBaseUrl: string;
+  registrationOpen: boolean;
+  maxUploadBytes: number;
+  maxClipDurationSeconds: number;
+}
+
+export interface CloudUsage {
+  clipCount: number;
+  usedBytes: number;
+  quotaBytes: number;
+}
+
+export interface CloudClip {
+  id: string;
+  title: string;
+  gameName: string | null;
+  status: 'UPLOADING' | 'PROCESSING' | 'READY' | 'FAILED';
+  visibility: 'private' | 'unlisted' | 'public';
+  allowDownload: boolean;
+  durationMs: number;
+  width: number;
+  height: number;
+  sizeBytes: number;
+  createdAt: string;
+  error: string | null;
+  shareUrl: string;
+  mediaUrl: string | null;
+  thumbnailUrl: string | null;
+}
+
+export type Visibility = 'private' | 'unlisted' | 'public';
+
+export interface UploadProgress {
+  clipId: string;
+  status: ClipStatus;
+  progress: number;
+  bytesPerSecond: number;
+}
+
+export const cloud = {
+  status: () => invoke<CloudStatus>('cloud_status'),
+  serverInfo: () => invoke<ServerInfo>('cloud_server_info'),
+  register: (email: string, password: string, displayName: string) => invoke<CloudUser>('cloud_register', { email, password, displayName }),
+  login: (email: string, password: string) => invoke<CloudUser>('cloud_login', { email, password }),
+  restore: () => invoke<CloudUser | null>('cloud_restore'),
+  logout: () => invoke<void>('cloud_logout'),
+  updateProfile: (displayName: string) => invoke<CloudUser>('cloud_update_profile', { displayName }),
+  usage: () => invoke<CloudUsage>('cloud_usage'),
+  deleteAccount: (password: string) => invoke<void>('cloud_delete_account', { password }),
+  listClips: (cursor?: string | null) => invoke<[CloudClip[], string | null]>('cloud_list_clips', { cursor: cursor ?? null }),
+  upload: (id: string, visibility?: Visibility) => invoke<Clip>('upload_clip', { id, visibility: visibility ?? null }),
+  cancelUpload: (id: string) => invoke<void>('cancel_upload', { id }),
+  setVisibility: (id: string, visibility: Visibility) => invoke<Clip>('set_cloud_visibility', { id, visibility }),
+  deleteCloudCopy: (id: string) => invoke<Clip>('delete_cloud_copy', { id }),
+};

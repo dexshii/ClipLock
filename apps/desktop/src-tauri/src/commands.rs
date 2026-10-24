@@ -120,6 +120,10 @@ pub async fn update_settings(app: AppHandle, settings: AppSettings) -> AppResult
                 tracing::warn!("autostart update failed: {e}");
             }
         }
+        if old.uploads.server_url != settings.uploads.server_url {
+            st.cloud.set_server(&settings.uploads.server_url);
+            let _ = app.emit("cloud-session", None::<crate::cloud::User>);
+        }
         if old.general.custom_games != settings.general.custom_games {
             *st.games.db.write() = GameDb::load(
                 &st.paths.resource("games.json"),

@@ -12,8 +12,9 @@
     "dialog:allow-save",
     "dialog:allow-ask",
     "dialog:allow-message",
-    "opener:allow-open-url",
+    "opener:default",
     "opener:allow-reveal-item-in-dir",
-    "notification:default"
+    "notification:default",
+    "clipboard-manager:allow-write-text"
   ]
 }

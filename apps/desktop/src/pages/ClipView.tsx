@@ -8,7 +8,7 @@ import { api, errorMessage, fileUrl, type Clip } from '../lib/ipc';
 import { formatBytes, formatDuration, formatResolution } from '../lib/format';
 import { useLibrary } from '../stores/library';
 import { toast } from '../stores/toasts';
-import { CloudPanel } from './Uploads';
+import { CloudPanel } from '../components/CloudPanel';
 
 export function ClipView() {
   const { id = '' } = useParams();
