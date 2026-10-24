@@ -1,0 +1,17 @@
+node_modules/
+dist/
+build/
+.next/
+out/
+target/
+coverage/
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+*.tsbuildinfo
+.turbo/
+# local data produced by dev runs
+.cliplock-dev/
+tests/.tmp/
