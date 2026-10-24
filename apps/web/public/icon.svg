@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="ClipLock">
+  <rect width="512" height="512" rx="112" fill="#0b0c0e"/>
+  <rect x="8" y="8" width="496" height="496" rx="104" fill="none" stroke="#262a30" stroke-width="8"/>
+  <!-- shackle -->
+  <path d="M176 232v-44a80 80 0 0 1 160 0v44" fill="none" stroke="#e9ebee" stroke-width="36" stroke-linecap="round"/>
+  <!-- body -->
+  <rect x="128" y="220" width="256" height="196" rx="40" fill="#3d7bff"/>
+  <!-- play mark -->
+  <path d="M232 274v88a8 8 0 0 0 12.2 6.8l70-44a8 8 0 0 0 0-13.6l-70-44A8 8 0 0 0 232 274z" fill="#0b0c0e"/>
+</svg>
