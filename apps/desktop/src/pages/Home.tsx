@@ -15,14 +15,17 @@ import { CaptureSourcePicker, QualityPresets } from '../components/CaptureContro
 import { quickReplayDurations } from '../lib/capture';
 
 export function Home() {
+  const desktop = useSettings((s) => s.settings?.recording.captureTarget === 'display');
   return (
     <>
-      <PageHeader title="Capture studio" subtitle="Choose your source. Keep the moment." actions={<GamePicker />} />
+      <PageHeader title="Capture studio" subtitle="Choose your source. Keep the moment." actions={desktop ? <Badge>Desktop capture</Badge> : <GamePicker />} />
       <div className="grid grid-cols-1 gap-5 px-8 py-6 xl:grid-cols-3">
-        <ReplayCard />
-        <RecorderHealth />
-        <RecentClips />
+        <div className="space-y-5 xl:col-span-2">
+          <ReplayCard />
+          <RecentClips />
+        </div>
         <div className="flex flex-col gap-5">
+          <RecorderHealth />
           <StorageCard />
           <UploadsSummary />
         </div>

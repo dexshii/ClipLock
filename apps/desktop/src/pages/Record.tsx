@@ -20,7 +20,7 @@ export function Record() {
 
   return (
     <>
-      <PageHeader title="Record" subtitle="Manual recording of everything until you press stop." actions={<GamePicker />} />
+      <PageHeader title="Record" subtitle="Manual recording of everything until you press stop." actions={settings.recording.captureTarget === 'display' ? <Badge>Desktop capture</Badge> : <GamePicker />} />
       <div className="mx-auto grid max-w-5xl grid-cols-1 gap-5 px-8 py-6 lg:grid-cols-[minmax(0,1fr)_340px]">
         <Card className="flex flex-col items-center justify-center px-6 py-12 text-center">
           <div className={recording && !recording.paused ? 'text-rec' : 'text-fg-muted'}>

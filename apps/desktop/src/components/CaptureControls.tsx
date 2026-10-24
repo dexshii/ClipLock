@@ -9,10 +9,11 @@ import { formatBytes } from '../lib/format';
 export function CaptureSourcePicker() {
   const { settings, saving, update } = useSettings();
   const state = useRecorder((s) => s.state);
+  const recorderBusy = useRecorder((s) => !!s.busy.save || !!s.busy.replay || !!s.busy.record);
   const [display, setDisplay] = useState(String((settings?.recording.monitorIndex ?? 0) + 1));
   useEffect(() => setDisplay(String((settings?.recording.monitorIndex ?? 0) + 1)), [settings?.recording.monitorIndex]);
   if (!settings) return null;
-  const locked = saving || !!state?.engine?.recording || !!state?.saving;
+  const locked = saving || recorderBusy || !!state?.engine?.recording || !!state?.saving;
   const desktop = settings.recording.captureTarget === 'display';
   const gameAvailable = !!state?.capabilities?.hasGfxcapture;
   const fallback = !desktop && state?.captureSource?.type === 'monitor';
@@ -69,9 +70,10 @@ export function CaptureSourcePicker() {
 export function QualityPresets() {
   const { settings, saving, update } = useSettings();
   const state = useRecorder((s) => s.state);
+  const recorderBusy = useRecorder((s) => !!s.busy.save || !!s.busy.replay || !!s.busy.record);
   if (!settings) return null;
   const selected = selectedCaptureProfile(settings);
-  const locked = saving || !!state?.engine?.recording || !!state?.saving;
+  const locked = saving || recorderBusy || !!state?.engine?.recording || !!state?.saving;
   return (
     <div>
       <div className="mb-2 flex items-center justify-between gap-3 text-xs">
