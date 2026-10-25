@@ -36,7 +36,11 @@ async function resolveBuild() {
     return { url: process.env.FFMPEG_ZIP_URL, sha256: process.env.FFMPEG_ZIP_SHA256.toLowerCase(), name: 'pinned' };
   }
   const release = await get('https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/latest');
-  const pattern = channel === 'master' ? /^ffmpeg-master-latest-win64-lgpl\.zip$/ : /^ffmpeg-n8\.\d+(\.\d+)?-latest-win64-lgpl-8\.\d+\.zip$/;
+  // BtbN names assets either "-latest-" or by version and commit (n8.1.3-24-g92611900bb, N-128094-g31855b2a70).
+  const pattern =
+    channel === 'master'
+      ? /^ffmpeg-(master-latest|N-\d+-g[0-9a-f]+)-win64-lgpl\.zip$/
+      : /^ffmpeg-n8\.\d+(\.\d+)?-(latest|\d+-g[0-9a-f]+)-win64-lgpl-8\.\d+\.zip$/;
   const asset = release.assets.find((a) => pattern.test(a.name));
   if (!asset) throw new Error(`no asset matching ${pattern} in ${release.tag_name}: ${release.assets.map((a) => a.name).join(', ')}`);
   const sums = release.assets.find((a) => a.name === 'checksums.sha256');
