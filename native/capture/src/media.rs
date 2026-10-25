@@ -35,6 +35,22 @@ fn ffmpeg_failed(context: &str, stderr: &str) -> CaptureError {
     ))
 }
 
+/// ffconcat script for `segments`. Each segment's exact duration (from the segmenter's
+/// list) is written out: without it FFmpeg estimates durations from the MPEG-TS
+/// timestamps, which are off by a frame or two, leaving a small timestamp gap — a
+/// visible hitch and an audio dropout — at every segment boundary. The last segment
+/// needs no duration (nothing follows it, and a recovered segment's is only estimated).
+fn concat_list(segments: &[Segment]) -> String {
+    let mut list = String::from("ffconcat version 1.0\n");
+    for (i, s) in segments.iter().enumerate() {
+        list.push_str(&format!("file {}\n", concat_quote(&s.path)));
+        if i + 1 < segments.len() && s.duration() > 0.0 {
+            list.push_str(&format!("duration {:.6}\n", s.duration()));
+        }
+    }
+    list
+}
+
 /// Losslessly joins keyframe-aligned segments into an MP4 with the index at the front
 /// (fast start). `max_duration` cuts the tail, which is safe without re-encoding.
 pub fn concat_segments(
@@ -53,11 +69,7 @@ pub fn concat_segments(
         ".{}.ffconcat",
         out.file_stem().and_then(|s| s.to_str()).unwrap_or("clip")
     ));
-    let mut list = String::from("ffconcat version 1.0\n");
-    for s in segments {
-        list.push_str(&format!("file {}\n", concat_quote(&s.path)));
-    }
-    std::fs::write(&list_path, list)?;
+    std::fs::write(&list_path, concat_list(segments))?;
 
     let tmp = part_path(out);
     let mut cmd = ffmpeg.command();
@@ -499,6 +511,25 @@ mod tests {
         assert_eq!(
             concat_quote(Path::new(r"C:\Clips\a.ts")),
             r"'C:\Clips\a.ts'"
+        );
+    }
+
+    #[test]
+    fn concat_list_carries_exact_durations() {
+        let seg = |i: u64, start: f64, end: f64| Segment {
+            index: i,
+            path: PathBuf::from(format!("/b/seg_{i}.ts")),
+            start,
+            end,
+        };
+        let list = concat_list(&[
+            seg(1, 1.023222, 2.023222),
+            seg(2, 2.023222, 3.04),
+            seg(3, 3.04, 4.0),
+        ]);
+        assert_eq!(
+            list,
+            "ffconcat version 1.0\nfile '/b/seg_1.ts'\nduration 1.000000\nfile '/b/seg_2.ts'\nduration 1.016778\nfile '/b/seg_3.ts'\n"
         );
     }
 

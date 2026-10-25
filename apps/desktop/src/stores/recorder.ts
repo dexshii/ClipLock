@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { api, errorMessage, on, type EngineEvent, type RecorderState } from '../lib/ipc';
+import { api, errorMessage, on, type Clip, type EngineEvent, type RecorderState } from '../lib/ipc';
 import { toast } from './toasts';
 
 type Action = 'replay' | 'save' | 'record' | 'pause';
@@ -13,7 +13,7 @@ interface RecorderStore {
   toggleRecording: () => Promise<void>;
   togglePause: () => Promise<void>;
   setMicMuted: (muted: boolean) => Promise<void>;
-  setManualGame: (name: string | null) => Promise<void>;
+  setManualGame: (name: string | null, hwnd?: number | null) => Promise<void>;
 }
 
 export const useRecorder = create<RecorderStore>((set, get) => {
@@ -43,10 +43,8 @@ export const useRecorder = create<RecorderStore>((set, get) => {
     saveReplay: (seconds) =>
       run(
         'save',
-        async () => {
-          const clip = await api.saveReplay(seconds);
-          toast.success('Clip saved', clip.title);
-        },
+        // Feedback comes from the clip-saving / clip-saved events, which also fire for the hotkey.
+        () => api.saveReplay(seconds),
         'Could not save clip',
       ),
     toggleRecording: () =>
@@ -67,8 +65,8 @@ export const useRecorder = create<RecorderStore>((set, get) => {
       await api.setMicMuted(muted).catch((e) => toast.error('Microphone', errorMessage(e)));
       await get().refresh();
     },
-    setManualGame: async (name) => {
-      await api.setManualGame(name);
+    setManualGame: async (name, hwnd = null) => {
+      await api.setManualGame(name, hwnd);
       await get().refresh();
     },
   };
@@ -77,6 +75,7 @@ export const useRecorder = create<RecorderStore>((set, get) => {
 /** Subscribes to backend events; polls while capturing so timers stay live. */
 export function startRecorderSync(): () => void {
   const store = useRecorder.getState();
+  let savingToast: number | null = null;
   void store.refresh();
   const unlisten = [
     on<RecorderState>('recorder-state', (state) => useRecorder.setState({ state })),
@@ -87,6 +86,14 @@ export function startRecorderSync(): () => void {
       if (e.type === 'audioWarning') toast.error('Audio device problem', e.message);
     }),
     on<string>('app-error', (message) => toast.error('ClipLock', message)),
+    on('clip-saving', () => {
+      savingToast = toast.info('Saving clip…');
+    }),
+    on<Clip>('clip-saved', (clip) => {
+      if (savingToast !== null) toast.dismiss(savingToast);
+      savingToast = null;
+      toast.success('Clip saved', clip.title);
+    }),
   ];
   const timer = window.setInterval(() => {
     const engine = useRecorder.getState().state?.engine;

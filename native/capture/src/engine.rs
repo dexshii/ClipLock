@@ -413,7 +413,9 @@ impl CaptureEngine {
         seconds: f64,
         segment_secs: u32,
     ) -> Result<SavedClip> {
-        let deadline = Instant::now() + Duration::from_secs(segment_secs as u64 * 2 + 3);
+        // At most one segment (plus encoder latency): if the encoder is slower than that,
+        // save what is already on disk rather than keep the user waiting.
+        let deadline = Instant::now() + Duration::from_millis(segment_secs as u64 * 1000 + 1500);
         let (selected, ffmpeg) = loop {
             {
                 let mut inner = self.inner.lock();

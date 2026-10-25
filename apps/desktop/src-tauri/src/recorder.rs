@@ -48,6 +48,7 @@ pub struct RecorderState {
     pub engine: Option<EngineStatus>,
     pub detected_game: Option<DetectedGame>,
     pub manual_game: Option<String>,
+    pub manual_hwnd: Option<u64>,
     pub saving: bool,
 }
 
@@ -92,7 +93,9 @@ impl Recorder {
     pub fn state(&self, app: &AppHandle) -> RecorderState {
         let st = app.state::<AppState>();
         let detected_game = st.games.detected.read().clone();
-        let manual_game = st.games.manual.read().clone();
+        let manual = st.games.manual.read().clone();
+        let manual_game = manual.as_ref().map(|m| m.name.clone());
+        let manual_hwnd = manual.and_then(|m| m.hwnd);
         RecorderState {
             capture_source: self.engine.read().as_ref().map(|e| e.config().video.source),
             init: self.init.read().clone().unwrap_or(InitState::Initializing),
@@ -100,6 +103,7 @@ impl Recorder {
             engine: self.engine.read().as_ref().map(|e| e.status()),
             detected_game,
             manual_game,
+            manual_hwnd,
             saving: self.saving.load(Ordering::Relaxed),
         }
     }
@@ -331,28 +335,46 @@ pub fn add_to_library(
         size_bytes: saved.info.size_bytes as i64,
     };
     let clip = db::insert_clip(&st.db.lock(), &new)?;
-    let thumb = st.paths.thumbnails_dir.join(format!("{}.jpg", clip.id));
-    let at = (saved.info.duration_secs * 0.3).min(5.0);
-    match st.recorder.ffmpeg().and_then(|f| {
-        Ok(cliplock_capture::media::thumbnail(
-            &f,
-            &saved.path,
-            &thumb,
-            at,
-            480,
-        )?)
-    }) {
-        Ok(()) => db::update_media(
-            &st.db.lock(),
-            &clip.id,
-            Some(&thumb),
-            saved.info.size_bytes as i64,
-        )?,
-        Err(e) => tracing::warn!("thumbnail for {} failed: {e}", clip.id),
-    }
-    let clip = db::get_clip(&st.db.lock(), &clip.id)?;
+    // Show the clip right away; the thumbnail follows a moment later (clip-updated).
     let _ = app.emit("clip-added", &clip);
+    spawn_thumbnail(
+        app.clone(),
+        clip.id.clone(),
+        saved.path.clone(),
+        saved.info.duration_secs,
+    );
     Ok(clip)
+}
+
+fn spawn_thumbnail(app: AppHandle, clip_id: String, video: PathBuf, duration_secs: f64) {
+    std::thread::Builder::new()
+        .name("cliplock-thumbnail".into())
+        .spawn(move || {
+            let st = app.state::<AppState>();
+            let thumb = st.paths.thumbnails_dir.join(format!("{clip_id}.jpg"));
+            let at = (duration_secs * 0.3).min(5.0);
+            let result = st.recorder.ffmpeg().and_then(|f| {
+                Ok(cliplock_capture::media::thumbnail(
+                    &f, &video, &thumb, at, 480,
+                )?)
+            });
+            if let Err(e) = result {
+                tracing::warn!("thumbnail for {clip_id} failed: {e}");
+                return;
+            }
+            let size = std::fs::metadata(&video)
+                .map(|m| m.len() as i64)
+                .unwrap_or(0);
+            let updated = db::update_media(&st.db.lock(), &clip_id, Some(&thumb), size)
+                .and_then(|_| db::get_clip(&st.db.lock(), &clip_id));
+            match updated {
+                Ok(clip) => {
+                    let _ = app.emit("clip-updated", &clip);
+                }
+                Err(e) => tracing::warn!("could not store thumbnail for {clip_id}: {e}"),
+            }
+        })
+        .expect("spawn thumbnail thread");
 }
 
 pub fn start_replay(app: &AppHandle) -> AppResult<()> {
@@ -403,6 +425,10 @@ pub fn save_replay(app: &AppHandle, seconds: Option<u32>) -> AppResult<Clip> {
     if st.recorder.saving.swap(true, Ordering::SeqCst) {
         return Err(AppError::Invalid("a clip is already being saved".into()));
     }
+    // Acknowledge the press immediately; the file is ready about a second later, once
+    // the segment containing this moment has been written.
+    cue(app, Cue::ClipSaved);
+    let _ = app.emit("clip-saving", ());
     emit_state(app);
     let result = (|| {
         let (_, game_name) = capture_identity(app);
@@ -420,7 +446,6 @@ pub fn save_replay(app: &AppHandle, seconds: Option<u32>) -> AppResult<Clip> {
     emit_state(app);
     match &result {
         Ok(clip) => {
-            cue(app, Cue::ClipSaved);
             notify(
                 app,
                 "Clip saved",

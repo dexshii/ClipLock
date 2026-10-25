@@ -137,7 +137,11 @@ fn start_game_detection(app: AppHandle) {
                     last_scan = Some(Instant::now());
                 }
                 let fg = games::foreground_process();
-                let detected = games::detect(&st.games.db.read(), fg.as_ref(), &running);
+                let mut detected = games::detect(&st.games.db.read(), fg.as_ref(), &running);
+                // A game running behind ClipLock (or another window) still has a window to capture.
+                if let Some(d) = detected.as_mut().filter(|d| d.hwnd.is_none()) {
+                    d.hwnd = games::window_for_pid(&games::open_windows(), d.pid);
+                }
                 let previous = st.games.detected.read().clone();
                 if detected != previous {
                     let window_changed = detected.as_ref().and_then(|d| d.hwnd)
@@ -218,6 +222,7 @@ pub fn run() {
             commands::list_audio_devices,
             commands::list_games,
             commands::set_manual_game,
+            commands::list_running_apps,
             commands::list_clips,
             commands::list_clip_games,
             commands::get_clip,

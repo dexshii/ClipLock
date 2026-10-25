@@ -138,6 +138,168 @@ pub fn detect(
     })
 }
 
+/// A visible top-level application window.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AppWindow {
+    pub pid: u32,
+    pub hwnd: u64,
+    pub title: String,
+}
+
+/// Visible, titled, unowned top-level windows of other processes (what a user would
+/// call "open apps"), in Z order. Tool windows and cloaked (hidden UWP) windows are skipped.
+#[cfg(windows)]
+pub fn open_windows() -> Vec<AppWindow> {
+    use windows::core::BOOL;
+    use windows::Win32::Foundation::{HWND, LPARAM};
+    use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindow, GetWindowLongPtrW, GetWindowTextLengthW, GetWindowTextW,
+        GetWindowThreadProcessId, IsWindowVisible, GWL_EXSTYLE, GW_OWNER, WS_EX_TOOLWINDOW,
+    };
+
+    unsafe extern "system" fn collect(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let out = unsafe { &mut *(lparam.0 as *mut Vec<AppWindow>) };
+        unsafe {
+            if !IsWindowVisible(hwnd).as_bool() || GetWindow(hwnd, GW_OWNER).is_ok() {
+                return BOOL(1);
+            }
+            if GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32 & WS_EX_TOOLWINDOW.0 != 0 {
+                return BOOL(1);
+            }
+            let mut cloaked = 0u32;
+            let cloaked_ok = DwmGetWindowAttribute(
+                hwnd,
+                DWMWA_CLOAKED,
+                &mut cloaked as *mut u32 as *mut core::ffi::c_void,
+                std::mem::size_of::<u32>() as u32,
+            )
+            .is_ok();
+            if cloaked_ok && cloaked != 0 {
+                return BOOL(1);
+            }
+            let len = GetWindowTextLengthW(hwnd);
+            if len <= 0 {
+                return BOOL(1);
+            }
+            let mut buf = vec![0u16; len as usize + 1];
+            let n = GetWindowTextW(hwnd, &mut buf);
+            let mut pid = 0u32;
+            GetWindowThreadProcessId(hwnd, Some(&mut pid));
+            if pid != 0 && pid != std::process::id() && n > 0 {
+                out.push(AppWindow {
+                    pid,
+                    hwnd: hwnd.0 as u64,
+                    title: String::from_utf16_lossy(&buf[..n as usize]),
+                });
+            }
+        }
+        BOOL(1)
+    }
+
+    let mut windows: Vec<AppWindow> = Vec::new();
+    unsafe {
+        let _ = EnumWindows(
+            Some(collect),
+            LPARAM(&mut windows as *mut Vec<AppWindow> as isize),
+        );
+    }
+    windows
+}
+
+#[cfg(not(windows))]
+pub fn open_windows() -> Vec<AppWindow> {
+    Vec::new()
+}
+
+/// An application the user can pick as the capture target: a running known game or
+/// another program with an open window.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RunningApp {
+    pub name: String,
+    pub executable: String,
+    pub pid: u32,
+    pub hwnd: Option<u64>,
+    pub game_id: Option<String>,
+}
+
+/// Windows of shell and system processes, never useful as a capture target.
+const NOT_APPS: &[&str] = &[
+    "explorer.exe",
+    "applicationframehost.exe",
+    "textinputhost.exe",
+    "systemsettings.exe",
+    "searchhost.exe",
+    "shellexperiencehost.exe",
+    "startmenuexperiencehost.exe",
+    "lockapp.exe",
+    "cliplock-desktop.exe",
+    "cliplock.exe",
+];
+
+pub fn window_for_pid(windows: &[AppWindow], pid: u32) -> Option<u64> {
+    windows.iter().find(|w| w.pid == pid).map(|w| w.hwnd)
+}
+
+/// Running known games first, then other programs with a visible window. Only what is
+/// actually running is listed.
+pub fn running_apps(
+    db: &GameDb,
+    processes: &[ProcessInfo],
+    windows: &[AppWindow],
+) -> Vec<RunningApp> {
+    let mut games: Vec<RunningApp> = Vec::new();
+    for p in processes {
+        let title = windows
+            .iter()
+            .find(|w| w.pid == p.pid)
+            .map(|w| w.title.as_str());
+        if let Some(g) = db.match_process(&p.exe_name, title) {
+            if !games
+                .iter()
+                .any(|a| a.game_id.as_deref() == Some(g.id.as_str()))
+            {
+                games.push(RunningApp {
+                    name: g.name.clone(),
+                    executable: p.exe_name.clone(),
+                    pid: p.pid,
+                    hwnd: window_for_pid(windows, p.pid),
+                    game_id: Some(g.id.clone()),
+                });
+            }
+        }
+    }
+    let exe_of = |pid: u32| {
+        processes
+            .iter()
+            .find(|p| p.pid == pid)
+            .map(|p| p.exe_name.clone())
+    };
+    let mut others: Vec<RunningApp> = Vec::new();
+    for w in windows {
+        if games.iter().chain(others.iter()).any(|a| a.pid == w.pid) {
+            continue;
+        }
+        let Some(exe) = exe_of(w.pid) else { continue };
+        if NOT_APPS.contains(&exe.to_ascii_lowercase().as_str()) {
+            continue;
+        }
+        let name: String = w.title.chars().take(60).collect();
+        others.push(RunningApp {
+            name,
+            executable: exe,
+            pid: w.pid,
+            hwnd: Some(w.hwnd),
+            game_id: None,
+        });
+    }
+    games.sort_by_key(|a| a.name.to_lowercase());
+    others.sort_by_key(|a| a.name.to_lowercase());
+    games.extend(others);
+    games
+}
+
 pub fn running_processes(system: &mut sysinfo::System) -> Vec<ProcessInfo> {
     system.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
     system
@@ -274,6 +436,69 @@ mod tests {
     }
 
     #[test]
+    fn lists_only_running_apps_games_first() {
+        let db = db();
+        let procs = vec![
+            proc(10, "cs2.exe", None, None),
+            proc(11, "Discord.exe", None, None),
+            proc(12, "explorer.exe", None, None),
+            proc(13, "svchost.exe", None, None),
+            proc(14, "cs2.exe", None, None),
+        ];
+        let windows = vec![
+            AppWindow {
+                pid: 11,
+                hwnd: 2,
+                title: "Discord".into(),
+            },
+            AppWindow {
+                pid: 10,
+                hwnd: 1,
+                title: "Counter-Strike 2".into(),
+            },
+            AppWindow {
+                pid: 12,
+                hwnd: 3,
+                title: "Program Manager".into(),
+            },
+            AppWindow {
+                pid: 11,
+                hwnd: 4,
+                title: "Discord popup".into(),
+            },
+        ];
+        let apps = running_apps(&db, &procs, &windows);
+        let names: Vec<_> = apps.iter().map(|a| a.name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec!["Counter-Strike 2", "Discord"],
+            "no database games that are not running, no system windows, no duplicates"
+        );
+        assert_eq!(apps[0].hwnd, Some(1));
+        assert_eq!(apps[0].game_id.as_deref(), Some("cs2"));
+        assert_eq!(apps[1].game_id, None);
+    }
+
+    #[test]
+    fn manual_target_overrides_detection() {
+        let svc = GameService::default();
+        *svc.detected.write() = Some(DetectedGame {
+            id: None,
+            name: "Dota 2".into(),
+            executable: "dota2.exe".into(),
+            pid: 1,
+            hwnd: Some(5),
+        });
+        assert_eq!(svc.foreground_hwnd(), Some(5));
+        *svc.manual.write() = Some(ManualTarget {
+            name: "Discord".into(),
+            hwnd: Some(9),
+        });
+        assert_eq!(svc.foreground_hwnd(), Some(9));
+        assert_eq!(svc.current().1.as_deref(), Some("Discord"));
+    }
+
+    #[test]
     fn prefers_foreground_game() {
         let db = db();
         let running = vec![
@@ -297,13 +522,21 @@ pub struct GameService {
     pub db: parking_lot::RwLock<GameDb>,
     pub detected: parking_lot::RwLock<Option<DetectedGame>>,
     /// Game chosen manually in the UI; overrides detection. Not persisted.
-    pub manual: parking_lot::RwLock<Option<String>>,
+    pub manual: parking_lot::RwLock<Option<ManualTarget>>,
+}
+
+/// A capture target picked by the user from the running apps.
+#[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManualTarget {
+    pub name: String,
+    pub hwnd: Option<u64>,
 }
 
 impl GameService {
     /// (game id, display name) to tag new clips with.
     pub fn current(&self) -> (Option<String>, Option<String>) {
-        if let Some(name) = self.manual.read().clone() {
+        if let Some(name) = self.manual.read().as_ref().map(|m| m.name.clone()) {
             let id = self
                 .db
                 .read()
@@ -319,7 +552,11 @@ impl GameService {
         }
     }
 
+    /// Window to capture in game-window mode: the user's pick, else the detected game's.
     pub fn foreground_hwnd(&self) -> Option<u64> {
+        if let Some(m) = self.manual.read().as_ref() {
+            return m.hwnd;
+        }
         self.detected.read().as_ref().and_then(|d| d.hwnd)
     }
 }

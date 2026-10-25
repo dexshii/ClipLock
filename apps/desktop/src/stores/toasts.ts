@@ -11,7 +11,7 @@ export interface Toast {
 
 interface ToastStore {
   toasts: Toast[];
-  push: (tone: ToastTone, title: string, body?: string) => void;
+  push: (tone: ToastTone, title: string, body?: string) => number;
   dismiss: (id: number) => void;
 }
 
@@ -23,12 +23,14 @@ export const useToasts = create<ToastStore>((set, get) => ({
     const id = nextId++;
     set({ toasts: [...get().toasts.slice(-3), { id, tone, title, body }] });
     setTimeout(() => get().dismiss(id), tone === 'error' ? 7000 : 4000);
+    return id;
   },
   dismiss: (id) => set({ toasts: get().toasts.filter((t) => t.id !== id) }),
 }));
 
 export const toast = {
   info: (title: string, body?: string) => useToasts.getState().push('info', title, body),
+  dismiss: (id: number) => useToasts.getState().dismiss(id),
   success: (title: string, body?: string) => useToasts.getState().push('success', title, body),
   error: (title: string, body?: string) => useToasts.getState().push('error', title, body),
 };

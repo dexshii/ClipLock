@@ -84,6 +84,42 @@ fn stream_durations(ff: &Ffmpeg, path: &Path) -> (f64, Vec<f64>) {
     (video, audio)
 }
 
+/// Fails if consecutive video frames are further apart than 1.5 frame durations —
+/// i.e. if joining segments left a hitch at a boundary.
+fn assert_smooth_video(ff: &Ffmpeg, path: &Path, fps: f64) {
+    let out = Command::new(&ff.ffprobe)
+        .args([
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "packet=pts_time",
+            "-of",
+            "csv=p=0",
+        ])
+        .arg(path)
+        .output()
+        .unwrap();
+    let mut pts: Vec<f64> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|l| l.trim().trim_end_matches(',').parse().ok())
+        .collect();
+    pts.sort_by(f64::total_cmp);
+    let frame = 1.0 / fps;
+    let gaps: Vec<f64> = pts
+        .windows(2)
+        .map(|w| w[1] - w[0])
+        .filter(|d| *d > frame * 1.5)
+        .collect();
+    assert!(pts.len() > 30, "too few frames in {}", path.display());
+    assert!(
+        gaps.is_empty(),
+        "timestamp gaps (hitches) in {}: {gaps:?}",
+        path.display()
+    );
+}
+
 fn assert_faststart(path: &Path) {
     let bytes = std::fs::read(path).unwrap();
     let find = |needle: &[u8]| bytes.windows(4).position(|w| w == needle).unwrap();
@@ -156,6 +192,7 @@ fn replay_recording_pause_and_recovery() {
     assert_eq!((saved.info.width, saved.info.height), (640, 360));
     assert_eq!(saved.info.audio_tracks, 3, "mixed + system + microphone");
     assert_faststart(&replay_path);
+    assert_smooth_video(&ff, &replay_path, 30.0);
     let (v, a) = stream_durations(&ff, &replay_path);
     for d in &a {
         assert!(
@@ -181,6 +218,7 @@ fn replay_recording_pause_and_recovery() {
         rec.info.duration_secs
     );
     assert_faststart(&rec_path);
+    assert_smooth_video(&ff, &rec_path, 30.0);
     assert!(
         engine.status().running,
         "replay keeps running after the recording stops"

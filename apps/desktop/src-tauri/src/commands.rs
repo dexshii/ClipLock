@@ -232,10 +232,33 @@ pub fn list_games(app: AppHandle) -> Vec<GameOption> {
 }
 
 #[tauri::command]
-pub fn set_manual_game(app: AppHandle, name: Option<String>) {
+pub fn set_manual_game(app: AppHandle, name: Option<String>, hwnd: Option<u64>) {
     let st = app.state::<AppState>();
-    *st.games.manual.write() = name.map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
+    let target = name
+        .map(|n| n.trim().to_string())
+        .filter(|n| !n.is_empty())
+        .map(|name| crate::games::ManualTarget { name, hwnd });
+    let changed = *st.games.manual.read() != target;
+    *st.games.manual.write() = target;
+    if changed {
+        // In game-window mode, capture switches to the picked window.
+        recorder::on_game_window_changed(&app);
+    }
     recorder::emit_state(&app);
+}
+
+/// Running games and open application windows, for choosing what to capture.
+#[tauri::command]
+pub async fn list_running_apps(app: AppHandle) -> AppResult<Vec<crate::games::RunningApp>> {
+    blocking(move || {
+        let st = app.state::<AppState>();
+        let mut system = sysinfo::System::new();
+        let processes = crate::games::running_processes(&mut system);
+        let windows = crate::games::open_windows();
+        let db = st.games.db.read();
+        Ok(crate::games::running_apps(&db, &processes, &windows))
+    })
+    .await
 }
 
 // ------------------------------------------------------------------ library

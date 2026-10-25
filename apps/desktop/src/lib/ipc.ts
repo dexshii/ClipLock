@@ -44,6 +44,14 @@ export interface DetectedGame {
   hwnd: number | null;
 }
 
+export interface RunningApp {
+  name: string;
+  executable: string;
+  pid: number;
+  hwnd: number | null;
+  gameId: string | null;
+}
+
 export type InitState = { state: 'initializing' } | { state: 'ready' } | { state: 'failed'; message: string };
 
 export interface RecorderState {
@@ -53,6 +61,7 @@ export interface RecorderState {
   engine: EngineStatus | null;
   detectedGame: DetectedGame | null;
   manualGame: string | null;
+  manualHwnd: number | null;
   saving: boolean;
 }
 
@@ -238,7 +247,8 @@ export const api = {
   audioDevices: () => invoke<AudioDevice[]>('list_audio_devices'),
 
   listGames: () => invoke<{ id: string; name: string }[]>('list_games'),
-  setManualGame: (name: string | null) => invoke<void>('set_manual_game', { name }),
+  setManualGame: (name: string | null, hwnd: number | null = null) => invoke<void>('set_manual_game', { name, hwnd }),
+  runningApps: () => invoke<RunningApp[]>('list_running_apps'),
 
   listClips: (query: ClipQuery = {}) => invoke<Clip[]>('list_clips', { query }),
   clipGames: () => invoke<string[]>('list_clip_games'),
