@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1 — Responsiveness fix (preview)
+
+- Fixed the window freezing ("Not Responding") while the encoder starts or restarts:
+  recorder, library and account calls no longer run on the UI thread.
+- Release builds find BtbN's FFmpeg downloads again after its asset names changed.
+
 ## 0.4.0 — Smooth clips and running-app capture (preview)
 
 - Fixed a hitch every second in saved clips and recordings: segments are now joined
