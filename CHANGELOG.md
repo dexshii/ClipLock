@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.0 — Smooth clips and running-app capture (preview)
+
+- Fixed a hitch every second in saved clips and recordings: segments are now joined
+  with their exact durations, removing the 10–20 ms video gaps and audio dropouts
+  at each segment boundary. Engine tests fail on any frame gap.
+- Instant Replay acknowledges the hotkey immediately (sound and "Saving clip…"),
+  waits at most one segment for the current moment, and generates the thumbnail
+  in the background so the clip appears in the library sooner.
+- The capture target picker lists only what is running — detected games first,
+  then open application windows — instead of the whole game database. Picking an
+  app names clips after it and, in game-window mode, captures that window.
+- Auto-detection finds the window of a game running in the background.
+
 ## 0.3.0 — Desktop workspace (preview)
 
 - Rebuilt Home as a media workspace: recent captures first, with a compact recorder

@@ -539,7 +539,7 @@ dependencies = [
 
 [[package]]
 name = "cliplock-capture"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "parking_lot",
  "serde",
@@ -554,7 +554,7 @@ dependencies = [
 
 [[package]]
 name = "cliplock-desktop"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "cliplock-capture",
