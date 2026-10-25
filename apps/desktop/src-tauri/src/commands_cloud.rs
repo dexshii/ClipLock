@@ -18,14 +18,19 @@ pub struct CloudStatus {
 }
 
 #[tauri::command]
-pub fn cloud_status(app: AppHandle) -> CloudStatus {
-    let st = app.state::<AppState>();
-    let server_url = st.settings.read().uploads.server_url.clone();
-    CloudStatus {
-        server_url,
-        user: st.cloud.user(),
-        has_stored_session: st.cloud.has_stored_session(),
-    }
+pub async fn cloud_status(app: AppHandle) -> AppResult<CloudStatus> {
+    // Reads the OS credential store; keep it off the UI thread.
+    tauri::async_runtime::spawn_blocking(move || {
+        let st = app.state::<AppState>();
+        let server_url = st.settings.read().uploads.server_url.clone();
+        CloudStatus {
+            server_url,
+            user: st.cloud.user(),
+            has_stored_session: st.cloud.has_stored_session(),
+        }
+    })
+    .await
+    .map_err(|e| AppError::Invalid(format!("background task failed: {e}")))
 }
 
 #[tauri::command]

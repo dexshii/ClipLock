@@ -16,6 +16,9 @@ use crate::settings::AppSettings;
 use crate::state::AppState;
 use crate::util::{is_within, sanitize_file_name, unique_path};
 
+/// Runs `f` on the blocking pool. Synchronous commands run on the main (UI) thread,
+/// so anything that can wait on a lock (engine, database) or on I/O must go through here
+/// or the window stops responding.
 async fn blocking<T, F>(f: F) -> AppResult<T>
 where
     T: Send + 'static,
@@ -143,8 +146,8 @@ pub async fn update_settings(app: AppHandle, settings: AppSettings) -> AppResult
 // ------------------------------------------------------------------ recorder
 
 #[tauri::command]
-pub fn get_recorder_state(app: AppHandle) -> RecorderState {
-    app.state::<AppState>().recorder.state(&app)
+pub async fn get_recorder_state(app: AppHandle) -> AppResult<RecorderState> {
+    blocking(move || Ok(app.state::<AppState>().recorder.state(&app))).await
 }
 
 #[tauri::command]
@@ -178,27 +181,33 @@ pub async fn toggle_pause(app: AppHandle) -> AppResult<()> {
 }
 
 #[tauri::command]
-pub fn set_mic_muted(app: AppHandle, muted: bool) -> AppResult<()> {
-    app.state::<AppState>()
-        .recorder
-        .engine()?
-        .set_mic_muted(muted);
-    recorder::emit_state(&app);
-    Ok(())
+pub async fn set_mic_muted(app: AppHandle, muted: bool) -> AppResult<()> {
+    blocking(move || {
+        app.state::<AppState>()
+            .recorder
+            .engine()?
+            .set_mic_muted(muted);
+        recorder::emit_state(&app);
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn reprobe_hardware(app: AppHandle) -> AppResult<()> {
-    let st = app.state::<AppState>();
-    if let Ok(engine) = st.recorder.engine() {
-        if engine.status().recording.is_some() {
-            return Err(AppError::Invalid(
-                "stop the recording before re-detecting hardware".into(),
-            ));
+pub async fn reprobe_hardware(app: AppHandle) -> AppResult<()> {
+    blocking(move || {
+        let st = app.state::<AppState>();
+        if let Ok(engine) = st.recorder.engine() {
+            if engine.status().recording.is_some() {
+                return Err(AppError::Invalid(
+                    "stop the recording before re-detecting hardware".into(),
+                ));
+            }
         }
-    }
-    recorder::initialize(app.clone(), true);
-    Ok(())
+        recorder::initialize(app.clone(), true);
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -232,19 +241,27 @@ pub fn list_games(app: AppHandle) -> Vec<GameOption> {
 }
 
 #[tauri::command]
-pub fn set_manual_game(app: AppHandle, name: Option<String>, hwnd: Option<u64>) {
-    let st = app.state::<AppState>();
-    let target = name
-        .map(|n| n.trim().to_string())
-        .filter(|n| !n.is_empty())
-        .map(|name| crate::games::ManualTarget { name, hwnd });
-    let changed = *st.games.manual.read() != target;
-    *st.games.manual.write() = target;
-    if changed {
-        // In game-window mode, capture switches to the picked window.
-        recorder::on_game_window_changed(&app);
-    }
-    recorder::emit_state(&app);
+pub async fn set_manual_game(
+    app: AppHandle,
+    name: Option<String>,
+    hwnd: Option<u64>,
+) -> AppResult<()> {
+    blocking(move || {
+        let st = app.state::<AppState>();
+        let target = name
+            .map(|n| n.trim().to_string())
+            .filter(|n| !n.is_empty())
+            .map(|name| crate::games::ManualTarget { name, hwnd });
+        let changed = *st.games.manual.read() != target;
+        *st.games.manual.write() = target;
+        if changed {
+            // In game-window mode, capture switches to the picked window.
+            recorder::on_game_window_changed(&app);
+        }
+        recorder::emit_state(&app);
+        Ok(())
+    })
+    .await
 }
 
 /// Running games and open application windows, for choosing what to capture.
@@ -275,20 +292,23 @@ pub async fn list_clips(app: AppHandle, query: Option<ClipQuery>) -> AppResult<V
 }
 
 #[tauri::command]
-pub fn list_clip_games(app: AppHandle) -> AppResult<Vec<String>> {
-    db::game_names(&app.state::<AppState>().db.lock())
+pub async fn list_clip_games(app: AppHandle) -> AppResult<Vec<String>> {
+    blocking(move || db::game_names(&app.state::<AppState>().db.lock())).await
 }
 
 #[tauri::command]
-pub fn get_clip(app: AppHandle, id: String) -> AppResult<Clip> {
-    db::get_clip(&app.state::<AppState>().db.lock(), &id)
+pub async fn get_clip(app: AppHandle, id: String) -> AppResult<Clip> {
+    blocking(move || db::get_clip(&app.state::<AppState>().db.lock(), &id)).await
 }
 
 #[tauri::command]
-pub fn update_clip(app: AppHandle, id: String, patch: ClipPatch) -> AppResult<Clip> {
-    let clip = db::update_clip(&app.state::<AppState>().db.lock(), &id, &patch)?;
-    let _ = app.emit("clip-updated", &clip);
-    Ok(clip)
+pub async fn update_clip(app: AppHandle, id: String, patch: ClipPatch) -> AppResult<Clip> {
+    blocking(move || {
+        let clip = db::update_clip(&app.state::<AppState>().db.lock(), &id, &patch)?;
+        let _ = app.emit("clip-updated", &clip);
+        Ok(clip)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -326,14 +346,17 @@ pub async fn delete_clip(app: AppHandle, id: String, delete_file: bool) -> AppRe
 }
 
 #[tauri::command]
-pub fn reveal_clip(app: AppHandle, id: String) -> AppResult<()> {
-    let clip = db::get_clip(&app.state::<AppState>().db.lock(), &id)?;
-    if !clip.file_path.exists() {
-        return Err(AppError::NotFound("the video file no longer exists".into()));
-    }
-    app.opener()
-        .reveal_item_in_dir(&clip.file_path)
-        .map_err(|e| AppError::Invalid(e.to_string()))
+pub async fn reveal_clip(app: AppHandle, id: String) -> AppResult<()> {
+    blocking(move || {
+        let clip = db::get_clip(&app.state::<AppState>().db.lock(), &id)?;
+        if !clip.file_path.exists() {
+            return Err(AppError::NotFound("the video file no longer exists".into()));
+        }
+        app.opener()
+            .reveal_item_in_dir(&clip.file_path)
+            .map_err(|e| AppError::Invalid(e.to_string()))
+    })
+    .await
 }
 
 #[tauri::command]

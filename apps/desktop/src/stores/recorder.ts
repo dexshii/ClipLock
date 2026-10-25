@@ -95,9 +95,14 @@ export function startRecorderSync(): () => void {
       toast.success('Clip saved', clip.title);
     }),
   ];
+  // One poll at a time: while the engine is busy (restarting the encoder) a poll can
+  // take seconds, and overlapping ones would only pile up.
+  let polling = false;
   const timer = window.setInterval(() => {
     const engine = useRecorder.getState().state?.engine;
-    if (engine?.running || useRecorder.getState().state?.init.state === 'initializing') void store.refresh();
+    if (polling || !(engine?.running || useRecorder.getState().state?.init.state === 'initializing')) return;
+    polling = true;
+    void store.refresh().finally(() => (polling = false));
   }, 1000);
   return () => {
     window.clearInterval(timer);
